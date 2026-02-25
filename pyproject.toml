@@ -34,7 +34,7 @@ dependencies = [
 ]
 
 [project.scripts]
-bsp = "bsp:main"
+bsp = "bsp.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/Advantech-EECC/bsp-registry-tools"
@@ -42,8 +42,7 @@ Repository = "https://github.com/Advantech-EECC/bsp-registry-tools"
 Issues = "https://github.com/Advantech-EECC/bsp-registry-tools/issues"
 
 [tool.setuptools]
-packages = []
-py-modules = ["bsp"]
+packages = ["bsp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
