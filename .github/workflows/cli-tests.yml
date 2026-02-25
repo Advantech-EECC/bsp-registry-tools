@@ -1,0 +1,57 @@
+name: CLI Integration Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  cli-test:
+    name: BSP CLI integration tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install PyYAML dacite colorama
+          pip install -e .
+
+      - name: bsp --help
+        run: bsp --help
+
+      - name: bsp list (example registry)
+        working-directory: examples
+        run: |
+          bsp --registry bsp-registry.yml list 2>&1 | tee list-output.txt
+          grep -q "poky-qemuarm64-scarthgap" list-output.txt
+          grep -q "poky-qemux86-64-scarthgap" list-output.txt
+          grep -q "poky-qemuarm-scarthgap" list-output.txt
+
+      - name: bsp containers (example registry)
+        working-directory: examples
+        run: |
+          bsp --registry bsp-registry.yml containers 2>&1 | tee containers-output.txt
+          grep -q "ubuntu-22.04" containers-output.txt
+
+      - name: bsp export (example registry)
+        working-directory: examples
+        run: |
+          bsp --registry bsp-registry.yml export poky-qemuarm64-scarthgap 2>&1 | tee export-output.txt
+          grep -q "poky-qemuarm64-scarthgap" export-output.txt
+
+      - name: bsp --no-color list (example registry)
+        working-directory: examples
+        run: bsp --no-color --registry bsp-registry.yml list
+
+      - name: bsp missing registry exits non-zero
+        run: |
+          bsp --registry /nonexistent/registry.yml list && exit 1 || true
