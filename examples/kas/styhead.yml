@@ -1,0 +1,30 @@
+# KAS configuration for Yocto Styhead (5.1)
+# https://downloads.yoctoproject.org/releases/yocto/yocto-5.1/RELEASENOTES
+header:
+  version: 14
+
+defaults:
+  repos:
+    branch: "styhead"
+
+repos:
+  poky:
+    url: "https://git.yoctoproject.org/poky"
+    commit: "1ecc5b826e25efb7c6ce7c86a8aee0cb0571bec5"
+    path: "layers/poky"
+    layers:
+      meta:
+      meta-poky:
+
+  meta-openembedded:
+    url: "https://github.com/openembedded/meta-openembedded.git"
+    commit: "811a7f4b3f2c0a54b6b94dab7c73c2af2dc6c7a5"
+    path: "layers/meta-openembedded"
+    layers:
+      meta-oe:
+      meta-python:
+      meta-networking:
+
+local_conf_header:
+  distro: |
+    WARN_QA:remove = "license-exists"

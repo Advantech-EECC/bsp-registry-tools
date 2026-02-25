@@ -1,0 +1,108 @@
+specification:
+  version: "1.0"
+
+# Global environment variables for all builds
+# Use $ENV{VAR_NAME} syntax to reference system environment variables
+environment:
+  - name: "GITCONFIG_FILE"
+    value: "$ENV{HOME}/.gitconfig"
+  - name: "DL_DIR"
+    value: "$ENV{HOME}/yocto-cache/downloads"
+  - name: "SSTATE_DIR"
+    value: "$ENV{HOME}/yocto-cache/sstate"
+
+# Container definitions for build environments
+containers:
+  - ubuntu-22.04:
+      image: "ghcr.io/siemens/kas/kas:4.7"
+      file: Dockerfile.ubuntu
+      args:
+        - name: "DISTRO"
+          value: "ubuntu:22.04"
+        - name: "KAS_VERSION"
+          value: "4.7"
+
+registry:
+  bsp:
+
+    # =====================================
+    # QEMU ARM64 BSPs
+    # =====================================
+
+    - name: poky-qemuarm64-scarthgap
+      description: "Poky QEMU ARM64 Scarthgap (Yocto 5.0 LTS)"
+      os:
+        name: linux
+        build_system: yocto
+        version: "5.0"
+      build:
+        path: build/qemu-arm64-scarthgap
+        environment:
+          container: "ubuntu-22.04"
+        configuration:
+          - kas/scarthgap.yml
+          - kas/qemu/qemuarm64.yml
+
+    - name: poky-qemuarm64-styhead
+      description: "Poky QEMU ARM64 Styhead (Yocto 5.1)"
+      os:
+        name: linux
+        build_system: yocto
+        version: "5.1"
+      build:
+        path: build/qemu-arm64-styhead
+        environment:
+          container: "ubuntu-22.04"
+        configuration:
+          - kas/styhead.yml
+          - kas/qemu/qemuarm64.yml
+
+    # =====================================
+    # QEMU x86-64 BSPs
+    # =====================================
+
+    - name: poky-qemux86-64-scarthgap
+      description: "Poky QEMU x86-64 Scarthgap (Yocto 5.0 LTS)"
+      os:
+        name: linux
+        build_system: yocto
+        version: "5.0"
+      build:
+        path: build/qemu-x86-64-scarthgap
+        environment:
+          container: "ubuntu-22.04"
+        configuration:
+          - kas/scarthgap.yml
+          - kas/qemu/qemux86-64.yml
+
+    - name: poky-qemux86-64-styhead
+      description: "Poky QEMU x86-64 Styhead (Yocto 5.1)"
+      os:
+        name: linux
+        build_system: yocto
+        version: "5.1"
+      build:
+        path: build/qemu-x86-64-styhead
+        environment:
+          container: "ubuntu-22.04"
+        configuration:
+          - kas/styhead.yml
+          - kas/qemu/qemux86-64.yml
+
+    # =====================================
+    # QEMU ARM (32-bit) BSPs
+    # =====================================
+
+    - name: poky-qemuarm-scarthgap
+      description: "Poky QEMU ARM (32-bit) Scarthgap (Yocto 5.0 LTS)"
+      os:
+        name: linux
+        build_system: yocto
+        version: "5.0"
+      build:
+        path: build/qemu-arm-scarthgap
+        environment:
+          container: "ubuntu-22.04"
+        configuration:
+          - kas/scarthgap.yml
+          - kas/qemu/qemuarm.yml

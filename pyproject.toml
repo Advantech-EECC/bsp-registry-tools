@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "advantech-bsp-registry"
+version = "0.0.1"
+description = "Advantech Board Support Package (BSP) Registry Manager"
+readme = "README.md"
+license = "MIT AND (Apache-2.0 OR BSD-2-Clause)"
+authors = [
+    {name = "Advantech", email = "mikhail.tsukerman@advantech.com"},
+]
+keywords = ["yocto", "bsp", "embedded", "linux", "build-system", "advantech"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: System :: Embedded Systems",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: POSIX :: Linux",
+]
+
+dependencies = [
+    "PyYAML>=6.0",
+    "dacite>=1.6.0",
+    "kas>=4.7",
+    "colorama>=0.4.6",
+]
+
+[project.scripts]
+bsp = "bsp:main"
+
+[project.urls]
+Homepage = "https://github.com/Advantech-EECC/bsp-registry-tools"
+Repository = "https://github.com/Advantech-EECC/bsp-registry-tools"
+Issues = "https://github.com/Advantech-EECC/bsp-registry-tools/issues"
+
+[tool.setuptools]
+packages = []
+py-modules = ["bsp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v"

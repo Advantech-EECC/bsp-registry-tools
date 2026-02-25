@@ -1,0 +1,15 @@
+# KAS machine configuration for QEMU ARM (32-bit) target
+header:
+  version: 14
+
+distro: poky
+
+machine: qemuarm
+
+target:
+  - core-image-minimal
+  - core-image-sato
+
+local_conf_header:
+  qemu: |
+    DISTRO_FEATURES += "x11"
