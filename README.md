@@ -9,6 +9,7 @@ Python tools to build, fetch, and work with Yocto-based BSPs using the [KAS](htt
 ### Key Features
 
 - 📋 **BSP registry management** via YAML configuration files
+- 🌐 **Automatic remote registry fetching** — clone/update a remote registry with no manual setup
 - 🐳 **Docker container support** for reproducible build environments
 - 🔧 **KAS integration** for Yocto-based builds (`kas`, `kas-container`)
 - 🖥️ **Interactive shell** access to build environments
@@ -41,6 +42,28 @@ pip install .
 - [colorama](https://github.com/tartley/colorama) >= 0.4.6
 
 ## Quick Start
+
+### Zero-Config Usage (Remote Registry)
+
+If you have no local registry file, `bsp` automatically clones the default
+[Advantech BSP registry](https://github.com/Advantech-EECC/bsp-registry) into
+`~/.cache/bsp/registry` and keeps it up-to-date on every run:
+
+```bash
+# First run: clones the registry, then lists BSPs
+bsp list
+
+# Subsequent runs: pulls latest changes, then lists BSPs
+bsp list
+
+# Skip the network update (useful offline or in CI)
+bsp --no-update list
+
+# Use a different remote or branch
+bsp --remote https://github.com/my-org/bsp-registry.git --branch dev list
+```
+
+### Manual Registry Usage
 
 ### 1. Create a BSP Registry File
 
@@ -82,6 +105,10 @@ registry:
 ### 2. List Available BSPs
 
 ```bash
+# With an explicit registry file
+bsp --registry bsp-registry.yml list
+
+# Or simply if bsp-registry.yml is in the current directory
 bsp list
 ```
 
@@ -104,7 +131,10 @@ bsp shell poky-qemuarm64-scarthgap
 ## CLI Reference
 
 ```
-usage: bsp [-h] [--verbose] [--registry REGISTRY] [--no-color] {build,list,containers,export,shell} ...
+usage: bsp [-h] [--verbose] [--registry REGISTRY] [--no-color]
+           [--remote REMOTE] [--branch BRANCH] [--update | --no-update]
+           [--local]
+           {build,list,containers,export,shell} ...
 
 Advantech Board Support Package Registry
 
@@ -121,17 +151,36 @@ options:
   -h, --help            show this help message and exit
   --verbose, -v         Verbose output
   --registry REGISTRY, -r REGISTRY
-                        BSP Registry file
+                        BSP Registry file (local path; skips remote fetch)
   --no-color            Disable colored output
+  --remote REMOTE       Remote registry git URL
+                        (default: https://github.com/Advantech-EECC/bsp-registry.git)
+  --branch BRANCH       Remote registry branch (default: main)
+  --update              Update the cached registry clone before use (default)
+  --no-update           Skip updating the cached registry clone
+  --local               Force local registry lookup only (do not use remote)
 ```
+
+### Registry Resolution Priority
+
+The tool determines which registry file to use in the following order:
+
+1. **`--registry <path>`** — explicit local file, remote fetch is skipped entirely.
+2. **`--local`** — use `./bsp-registry.yml` in the current directory; no network access.
+3. **`bsp-registry.yml` exists in the current directory** — backward-compatible auto-detect.
+4. **Otherwise** — clone/update the remote registry into `~/.cache/bsp/registry` via `RegistryFetcher`.
 
 ### Global Options
 
 | Option | Description |
 |--------|-------------|
 | `--verbose`, `-v` | Enable verbose/debug output |
-| `--registry REGISTRY`, `-r REGISTRY` | Path to BSP registry file (default: `bsp-registry.yml`) |
+| `--registry REGISTRY`, `-r REGISTRY` | Path to BSP registry file (local override) |
 | `--no-color` | Disable colored output |
+| `--remote REMOTE` | Remote registry git URL (default: Advantech BSP registry) |
+| `--branch BRANCH` | Remote registry branch (default: `main`) |
+| `--update` / `--no-update` | Update cached registry clone before use (default: update) |
+| `--local` | Force local lookup; never contact remote |
 
 ### Commands
 
@@ -338,10 +387,18 @@ local_conf_header:
 You can also use `bsp-registry-tools` as a Python library:
 
 ```python
-from bsp import BspManager, EnvironmentManager, KasManager
+from bsp import BspManager, EnvironmentManager, KasManager, RegistryFetcher
+
+# Fetch registry from remote (clone on first call, pull on subsequent)
+fetcher = RegistryFetcher()
+registry_path = fetcher.fetch_registry(
+    repo_url="https://github.com/Advantech-EECC/bsp-registry.git",
+    branch="main",
+    update=True,
+)
 
 # Load and manage BSP registry
-manager = BspManager("bsp-registry.yml")
+manager = BspManager(str(registry_path))
 manager.initialize()
 
 # List BSPs programmatically
@@ -398,12 +455,26 @@ pytest tests/test_bsp.py::TestEnvironmentManager -v
 
 ```
 bsp-registry-tools/
-├── bsp.py                    # Main module
+├── bsp/
+│   ├── __init__.py           # Public API exports
+│   ├── cli.py                # CLI entry point
+│   ├── bsp_manager.py        # Main BSP coordinator
+│   ├── registry_fetcher.py   # Remote registry clone/update
+│   ├── kas_manager.py        # KAS build system integration
+│   ├── environment.py        # Environment variable management
+│   ├── path_resolver.py      # Path utilities
+│   ├── models.py             # Dataclass models
+│   ├── utils.py              # YAML / Docker utilities
+│   └── exceptions.py         # Custom exceptions
 ├── pyproject.toml            # Package configuration
 ├── README.md                 # This file
-├── LICENSE                   # MIT License
+├── LICENSE                   # Apache 2.0 License
 ├── tests/
-│   └── test_bsp.py           # Comprehensive pytest tests
+│   ├── conftest.py
+│   ├── test_bsp_manager.py
+│   ├── test_cli.py
+│   ├── test_registry_fetcher.py
+│   └── ...
 ├── examples/
 │   ├── bsp-registry.yml      # Sample BSP registry for QEMU targets
 │   └── kas/
@@ -460,6 +531,7 @@ python -m build
 | `KasManager` | Handles KAS build system operations |
 | `EnvironmentManager` | Manages build environment variables with `$ENV{}` expansion |
 | `PathResolver` | Utility for path resolution and validation |
+| `RegistryFetcher` | Clones/updates a remote git-hosted BSP registry to a local cache |
 
 ### Data Classes
 
