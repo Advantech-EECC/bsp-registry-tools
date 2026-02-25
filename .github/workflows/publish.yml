@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/advantech-bsp-registry
+      url: https://test.pypi.org/p/bsp-registry-tools
     permissions:
       id-token: write
 
@@ -73,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/advantech-bsp-registry
+      url: https://pypi.org/p/bsp-registry-tools
     permissions:
       id-token: write
 
