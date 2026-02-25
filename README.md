@@ -3,7 +3,7 @@
 [![Tests](https://github.com/Advantech-EECC/bsp-registry-tools/actions/workflows/tests.yml/badge.svg)](https://github.com/Advantech-EECC/bsp-registry-tools/actions/workflows/tests.yml)
 [![PyPI version](https://badge.fury.io/py/bsp-registry-tools.svg)](https://badge.fury.io/py/bsp-registry-tools)
 [![Python Versions](https://img.shields.io/pypi/pyversions/bsp-registry-tools.svg)](https://pypi.org/project/bsp-registry-tools/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202-blue)](https://opensource.org/license/apache-2-0)
 
 Python tools to build, fetch, and work with Yocto-based BSPs using the [KAS](https://kas.readthedocs.io/) build system.
 
@@ -62,12 +62,14 @@ environment:
     value: "$ENV{HOME}/yocto-cache/sstate"
 
 containers:
-  - ubuntu-22.04:
-      image: "ghcr.io/siemens/kas/kas:4.7"
-      file: Dockerfile.ubuntu
+  - debian-bookworm:
+      image: "bsp/registry/debian/kas:5.1"
+      file: Dockerfile
       args:
         - name: "DISTRO"
-          value: "ubuntu:22.04"
+          value: "debian-bookworm"
+        - name: "KAS_VERSION"
+          value: "5.1"
 
 registry:
   bsp:
@@ -76,7 +78,7 @@ registry:
       build:
         path: build/qemu-arm64-scarthgap
         environment:
-          container: "ubuntu-22.04"
+          container: "debian-bookworm"
         configuration:
           - kas/scarthgap.yml
           - kas/qemu/qemuarm64.yml
@@ -488,7 +490,7 @@ python -m build
 
 ## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache 2.0 License — see the [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
