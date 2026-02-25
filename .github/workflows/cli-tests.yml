@@ -40,7 +40,7 @@ jobs:
         working-directory: examples
         run: |
           bsp --registry bsp-registry.yml containers 2>&1 | tee containers-output.txt
-          grep -q "ubuntu-22.04" containers-output.txt
+          grep -q "debian-bookworm" containers-output.txt
 
       - name: bsp export (example registry)
         working-directory: examples

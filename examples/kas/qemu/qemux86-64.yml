@@ -2,14 +2,4 @@
 header:
   version: 14
 
-distro: poky
-
 machine: qemux86-64
-
-target:
-  - core-image-minimal
-  - core-image-sato
-
-local_conf_header:
-  qemu: |
-    DISTRO_FEATURES += "x11"

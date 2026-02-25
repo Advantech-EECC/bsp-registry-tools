@@ -7,20 +7,20 @@ environment:
   - name: "GITCONFIG_FILE"
     value: "$ENV{HOME}/.gitconfig"
   - name: "DL_DIR"
-    value: "$ENV{HOME}/yocto-cache/downloads"
+    value: "$ENV{HOME}/data/cache/downloads"
   - name: "SSTATE_DIR"
-    value: "$ENV{HOME}/yocto-cache/sstate"
+    value: "$ENV{HOME}/data/cache/sstate"
 
 # Container definitions for build environments
 containers:
-  - ubuntu-22.04:
-      image: "ghcr.io/siemens/kas/kas:4.7"
-      file: Dockerfile.ubuntu
+  - debian-bookworm:
+      image: "bsp/registry/debian/kas:5.1"
+      file: Dockerfile
       args:
         - name: "DISTRO"
-          value: "ubuntu:22.04"
+          value: "debian-bookworm"
         - name: "KAS_VERSION"
-          value: "4.7"
+          value: "5.1"
 
 registry:
   bsp:
@@ -38,7 +38,7 @@ registry:
       build:
         path: build/qemu-arm64-scarthgap
         environment:
-          container: "ubuntu-22.04"
+          container: "debian-bookworm"
         configuration:
           - kas/scarthgap.yml
           - kas/qemu/qemuarm64.yml
@@ -52,7 +52,7 @@ registry:
       build:
         path: build/qemu-arm64-styhead
         environment:
-          container: "ubuntu-22.04"
+          container: "debian-bookworm"
         configuration:
           - kas/styhead.yml
           - kas/qemu/qemuarm64.yml
@@ -70,7 +70,7 @@ registry:
       build:
         path: build/qemu-x86-64-scarthgap
         environment:
-          container: "ubuntu-22.04"
+          container: "debian-bookworm"
         configuration:
           - kas/scarthgap.yml
           - kas/qemu/qemux86-64.yml
@@ -84,7 +84,7 @@ registry:
       build:
         path: build/qemu-x86-64-styhead
         environment:
-          container: "ubuntu-22.04"
+          container: "debian-bookworm"
         configuration:
           - kas/styhead.yml
           - kas/qemu/qemux86-64.yml
@@ -102,7 +102,7 @@ registry:
       build:
         path: build/qemu-arm-scarthgap
         environment:
-          container: "ubuntu-22.04"
+          container: "debian-bookworm"
         configuration:
           - kas/scarthgap.yml
           - kas/qemu/qemuarm.yml
