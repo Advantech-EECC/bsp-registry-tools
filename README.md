@@ -107,8 +107,25 @@ bsp shell poky-qemuarm64-scarthgap
 ## CLI Reference
 
 ```
-usage: bsp [-h] [--verbose] [--registry REGISTRY] [--no-color]
-           {build,list,containers,export,shell} ...
+usage: bsp [-h] [--verbose] [--registry REGISTRY] [--no-color] {build,list,containers,export,shell} ...
+
+Advantech Board Support Package Registry
+
+positional arguments:
+  {build,list,containers,export,shell}
+                        Command to execute
+    build               Build an image for BSP
+    list                List available BSPs
+    containers          List available containers
+    export              Export BSP configuration
+    shell               Enter interactive shell for BSP
+
+options:
+  -h, --help            show this help message and exit
+  --verbose, -v         Verbose output
+  --registry REGISTRY, -r REGISTRY
+                        BSP Registry file
+  --no-color            Disable colored output
 ```
 
 ### Global Options
