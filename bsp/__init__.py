@@ -63,6 +63,7 @@ from .path_resolver import PathResolver, resolver
 from .environment import EnvironmentManager
 from .kas_manager import KasManager
 from .bsp_manager import BspManager
+from .registry_fetcher import RegistryFetcher
 from .cli import main
 
 __all__ = [
@@ -101,6 +102,7 @@ __all__ = [
     "EnvironmentManager",
     "KasManager",
     "BspManager",
+    "RegistryFetcher",
     # CLI
     "main",
 ]

@@ -5,9 +5,11 @@ CLI entry point for the BSP registry manager.
 import argparse
 import logging
 import sys
+from pathlib import Path
 
 from .bsp_manager import BspManager
 from .exceptions import COLORAMA_AVAILABLE, ColoramaFormatter
+from .registry_fetcher import DEFAULT_REMOTE_URL, DEFAULT_BRANCH, RegistryFetcher
 
 # =============================================================================
 # Main Entry Point with Enhanced Commands
@@ -28,8 +30,18 @@ def main() -> int:
         # Parse command line arguments
         parser = argparse.ArgumentParser(description="Advantech Board Support Package Registry")
         parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
-        parser.add_argument('--registry', '-r', default='bsp-registry.yml', help='BSP Registry file')
+        parser.add_argument('--registry', '-r', default=None, help='BSP Registry file (local path)')
         parser.add_argument('--no-color', action='store_true', help='Disable colored output')
+        parser.add_argument('--remote', default=DEFAULT_REMOTE_URL,
+                            help='Remote registry git URL (default: %(default)s)')
+        parser.add_argument('--branch', default=DEFAULT_BRANCH,
+                            help='Remote registry branch (default: %(default)s)')
+        parser.add_argument('--update', dest='update', action='store_true', default=True,
+                            help='Update the cached registry clone before use (default)')
+        parser.add_argument('--no-update', dest='update', action='store_false',
+                            help='Skip updating the cached registry clone')
+        parser.add_argument('--local', action='store_true',
+                            help='Force local registry lookup only (do not use remote)')
 
         # Create subparsers for different commands
         subparsers = parser.add_subparsers(dest='command', help='Command to execute', required=True)
@@ -104,8 +116,33 @@ def main() -> int:
                 '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             ))
 
+        # Resolve registry file path
+        # Priority:
+        #   1. --registry explicitly provided  -> use that file (local override)
+        #   2. --local flag set                -> use local bsp-registry.yml (no remote)
+        #   3. bsp-registry.yml in current dir -> use that file (backward compat)
+        #   4. Otherwise -> fetch from remote via RegistryFetcher
+        LOCAL_DEFAULT = "bsp-registry.yml"
+        if args.registry is not None:
+            registry_path = args.registry
+            logging.info("Using explicitly provided registry: %s", registry_path)
+        elif args.local:
+            registry_path = LOCAL_DEFAULT
+            logging.info("Using local registry (--local): %s", registry_path)
+        elif Path(LOCAL_DEFAULT).is_file():
+            registry_path = LOCAL_DEFAULT
+            logging.info("Using local registry: %s", registry_path)
+        else:
+            fetcher = RegistryFetcher()
+            registry_path = str(fetcher.fetch_registry(
+                repo_url=args.remote,
+                branch=args.branch,
+                update=args.update,
+            ))
+            logging.info("Using remote registry cached at: %s", registry_path)
+
         # Initialize and run BSP manager
-        bsp_mgr = BspManager(args.registry)
+        bsp_mgr = BspManager(registry_path)
         bsp_mgr.initialize()
 
         # Execute requested command
