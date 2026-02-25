@@ -48,6 +48,12 @@ jobs:
           bsp --registry bsp-registry.yml export poky-qemuarm64-scarthgap 2>&1 | tee export-output.txt
           grep -q "poky-qemuarm64-scarthgap" export-output.txt
 
+      - name: bsp build --checkout (example registry)
+        working-directory: examples
+        run: |
+          bsp --registry bsp-registry.yml build --checkout poky-qemuarm64-scarthgap 2>&1 | tee checkout-output.txt
+          grep -q "poky-qemuarm64-scarthgap" checkout-output.txt
+
       - name: bsp --no-color list (example registry)
         working-directory: examples
         run: bsp --no-color --registry bsp-registry.yml list
