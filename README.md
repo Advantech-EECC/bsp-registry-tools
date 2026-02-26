@@ -4,18 +4,31 @@ Python tools to build, fetch, and work with Yocto-based BSPs using the [KAS](htt
 
 ## Overview
 
-`bsp-registry-tools` provides a command-line interface and Python API for managing Advantech Board Support Packages (BSPs). It uses YAML-based registry files to define BSP configurations, build environments, and Docker containers, making reproducible Yocto builds straightforward.
+`bsp-registry-tools` provides a command-line interface and Python API for managing Advantech Board Support Packages (BSPs). It uses YAML-based registry files (schema **v2.0**) to define devices, releases, features, and Docker containers, making reproducible Yocto builds straightforward.
+
+> **Schema version:** This release uses **registry schema v2.0**.
+> The older v1.0 schema is no longer supported.
+> See [docs/migration-v1-to-v2.md](docs/migration-v1-to-v2.md) to upgrade.
 
 ### Key Features
 
-- 📋 **BSP registry management** via YAML configuration files
+- 📋 **BSP registry management** via YAML configuration files (v2.0 schema)
 - 🌐 **Automatic remote registry fetching** — clone/update a remote registry with no manual setup
+- 🧩 **Device / release / feature decomposition** with compatibility checking
 - 🐳 **Docker container support** for reproducible build environments
 - 🔧 **KAS integration** for Yocto-based builds (`kas`, `kas-container`)
 - 🖥️ **Interactive shell** access to build environments
 - 🔄 **Environment variable expansion** (`$ENV{VAR}` syntax)
 - 📤 **Configuration export** for sharing and archiving build configs
 - ✅ **Comprehensive validation** of configurations before building
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/registry-v2.md](docs/registry-v2.md) | Full v2.0 schema reference with examples |
+| [docs/registry-v1.md](docs/registry-v1.md) | Historical v1.0 schema reference |
+| [docs/migration-v1-to-v2.md](docs/migration-v1-to-v2.md) | Migration guide: v1.0 → v2.0 |
 
 ## Installation
 
@@ -67,11 +80,11 @@ bsp --remote https://github.com/my-org/bsp-registry.git --branch dev list
 
 ### 1. Create a BSP Registry File
 
-Create a `bsp-registry.yaml` file (see [examples/bsp-registry.yaml](examples/bsp-registry.yaml)):
+Create a `bsp-registry.yaml` file (see [examples/bsp-registry.yml](examples/bsp-registry.yml) and [docs/registry-v2.md](docs/registry-v2.md)):
 
 ```yaml
 specification:
-  version: "1.0"
+  version: "2.0"
 
 environment:
   - name: "DL_DIR"
@@ -80,52 +93,83 @@ environment:
     value: "$ENV{HOME}/yocto-cache/sstate"
 
 containers:
-  - debian-bookworm:
-      image: "bsp/registry/debian/kas:5.1"
-      file: Dockerfile
-      args:
-        - name: "DISTRO"
-          value: "debian-bookworm"
-        - name: "KAS_VERSION"
-          value: "5.1"
+  debian-bookworm:
+    image: "bsp/registry/debian/kas:5.1"
+    file: Dockerfile
+    args:
+      - name: "DISTRO"
+        value: "debian-bookworm"
 
 registry:
+  devices:
+    - slug: qemuarm64
+      description: "QEMU ARM64 (emulated)"
+      vendor: qemu
+      soc_vendor: arm
+      build:
+        container: "debian-bookworm"
+        path: build/qemu-arm64
+        includes:
+          - kas/qemu/qemuarm64.yml
+
+  releases:
+    - slug: scarthgap
+      description: "Yocto 5.0 LTS (Scarthgap)"
+      yocto_version: "5.0"
+      includes:
+        - kas/scarthgap.yml
+
+  features: []
+
   bsp:
     - name: poky-qemuarm64-scarthgap
       description: "Poky QEMU ARM64 Scarthgap (Yocto 5.0 LTS)"
-      build:
-        path: build/qemu-arm64-scarthgap
-        environment:
-          container: "debian-bookworm"
-        configuration:
-          - kas/scarthgap.yaml
-          - kas/qemu/qemuarm64.yaml
+      device: qemuarm64
+      release: scarthgap
+      features: []
 ```
 
-### 2. List Available BSPs
+### 2. List Available BSPs and Components
 
 ```bash
 # With an explicit registry file
 bsp --registry bsp-registry.yaml list
 
-# Or simply if bsp-registry.yaml is in the current directory
-bsp list
-```
+# Or simply if bsp-registry.yml is in the current directory
 
-```
-- poky-qemuarm64-scarthgap: Poky QEMU ARM64 Scarthgap (Yocto 5.0 LTS)
+# List BSP presets
+bsp list
+
+# List all devices
+bsp list devices
+
+# List all releases
+bsp list releases
+
+# List all features
+bsp list features
 ```
 
 ### 3. Build a BSP
 
 ```bash
+# Build by preset name
 bsp build poky-qemuarm64-scarthgap
+
+# Build by specifying components directly (no preset required)
+bsp build --device qemuarm64 --release scarthgap
+
+# Build with an optional feature enabled
+bsp build --device qemuarm64 --release scarthgap --feature ota
 ```
 
 ### 4. Enter Interactive Shell
 
 ```bash
 bsp shell poky-qemuarm64-scarthgap
+
+# Or by components
+bsp shell --device qemuarm64 --release scarthgap
 ```
 
 ## CLI Reference
@@ -142,7 +186,7 @@ positional arguments:
   {build,list,containers,export,shell}
                         Command to execute
     build               Build an image for BSP
-    list                List available BSPs
+    list                List available BSPs and components
     containers          List available containers
     export              Export BSP configuration
     shell               Enter interactive shell for BSP
@@ -184,11 +228,14 @@ The tool determines which registry file to use in the following order:
 
 ### Commands
 
-#### `list` — List available BSPs
+#### `list` — List available BSPs and components
 
 ```bash
-bsp list
-bsp --registry my-registry.yaml list
+bsp list                      # List BSP presets
+bsp list devices              # List hardware devices
+bsp list releases             # List Yocto/Isar releases
+bsp list releases --device d  # Filter releases by device
+bsp list features             # List optional features
 ```
 
 #### `containers` — List available container definitions
@@ -200,19 +247,32 @@ bsp containers
 #### `build` — Build a BSP image
 
 ```bash
-bsp build <bsp_name> [--clean] [--checkout]
+# Build by preset name
+bsp build <preset_name> [--clean] [--checkout]
+
+# Build by components
+bsp build --device <device> --release <release> [--feature <f> ...] [--checkout]
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--clean` | Clean build directory before building |
 | `--checkout` | Validate configuration and checkout repos without building |
+| `--device`, `-d` | Device slug |
+| `--release` | Release slug |
+| `--feature`, `-f` | Feature slug (repeatable) |
 
 **Examples:**
 
 ```bash
-# Full build
+# Build a named preset
 bsp build poky-qemuarm64-scarthgap
+
+# Build by components (no preset needed)
+bsp build --device qemuarm64 --release scarthgap
+
+# Build with features
+bsp build --device imx8mp-adv --release scarthgap --feature ota --feature secure-boot
 
 # Checkout/validate only (fast, no build)
 bsp build poky-qemuarm64-scarthgap --checkout
@@ -221,7 +281,8 @@ bsp build poky-qemuarm64-scarthgap --checkout
 #### `shell` — Interactive shell in build environment
 
 ```bash
-bsp shell <bsp_name> [--command COMMAND]
+bsp shell <preset_name> [--command COMMAND]
+bsp shell --device <device> --release <release> [--feature <f> ...] [--command COMMAND]
 ```
 
 | Option | Description |
@@ -231,8 +292,11 @@ bsp shell <bsp_name> [--command COMMAND]
 **Examples:**
 
 ```bash
-# Interactive shell
+# Interactive shell via preset
 bsp shell poky-qemuarm64-scarthgap
+
+# Interactive shell by components
+bsp shell --device qemuarm64 --release scarthgap
 
 # Execute single command
 bsp shell poky-qemuarm64-scarthgap --command "bitbake core-image-minimal"
@@ -241,7 +305,8 @@ bsp shell poky-qemuarm64-scarthgap --command "bitbake core-image-minimal"
 #### `export` — Export BSP configuration
 
 ```bash
-bsp export <bsp_name> [--output OUTPUT]
+bsp export <preset_name> [--output OUTPUT]
+bsp export --device <device> --release <release> [--feature <f> ...] [--output OUTPUT]
 ```
 
 | Option | Description |
@@ -256,86 +321,125 @@ bsp export poky-qemuarm64-scarthgap
 
 # Save to file
 bsp export poky-qemuarm64-scarthgap --output exported-config.yaml
+
+# Export by components
+bsp export --device qemuarm64 --release scarthgap --output /tmp/config.yaml
 ```
 
 ## Registry Configuration Reference
 
-The BSP registry is a YAML file with the following top-level sections:
+See **[docs/registry-v2.md](docs/registry-v2.md)** for the full schema reference.
+
+The v2.0 registry has the following top-level sections:
 
 ### `specification`
 
 ```yaml
 specification:
-  version: "1.0"
+  version: "2.0"   # required; tool exits on any other value
 ```
 
 ### `environment`
 
-Global environment variables applied to all builds. Supports `$ENV{VAR_NAME}` expansion to reference system environment variables.
+Global environment variables applied to all builds.  Supports `$ENV{VAR_NAME}` expansion.
 
 ```yaml
 environment:
-  - name: "GITCONFIG_FILE"
-    value: "$ENV{HOME}/.gitconfig"
   - name: "DL_DIR"
     value: "$ENV{HOME}/yocto-cache/downloads"
   - name: "SSTATE_DIR"
     value: "$ENV{HOME}/yocto-cache/sstate"
 ```
 
-**Supported variables:**
-
-| Variable | Description |
-|----------|-------------|
-| `DL_DIR` | Yocto downloads cache directory |
-| `SSTATE_DIR` | Yocto shared state cache directory |
-| `GITCONFIG_FILE` | Git configuration file path |
-
 ### `containers`
 
-Docker container definitions for build environments:
+Docker container definitions (dict format in v2.0):
 
 ```yaml
 containers:
-  - ubuntu-22.04:
-      image: "my-registry/ubuntu-22.04/kas:4.7"
-      file: Dockerfile.ubuntu
-      args:
-        - name: "DISTRO"
-          value: "ubuntu:22.04"
-        - name: "KAS_VERSION"
-          value: "4.7"
-  - ubuntu-20.04:
-      image: "my-registry/ubuntu-20.04/kas:4.7"
-      file: Dockerfile.ubuntu
-      args:
-        - name: "DISTRO"
-          value: "ubuntu:20.04"
+  debian-bookworm:
+    image: "my-registry/debian/kas:5.1"
+    file: Dockerfile
+    args:
+      - name: "KAS_VERSION"
+        value: "5.1"
 ```
 
-### `registry.bsp`
+### `registry.devices`
 
-List of BSP definitions:
+Hardware board definitions:
+
+```yaml
+registry:
+  devices:
+    - slug: my-board
+      description: "My Board"
+      vendor: acme
+      soc_vendor: nxp
+      soc_family: imx8          # optional
+      build:
+        container: "debian-bookworm"
+        path: build/my-board
+        includes:
+          - kas/boards/my-board.yml
+        local_conf: []           # optional extra local.conf lines
+```
+
+### `registry.releases`
+
+Yocto/Isar release definitions:
+
+```yaml
+registry:
+  releases:
+    - slug: scarthgap
+      description: "Yocto 5.0 LTS"
+      yocto_version: "5.0"
+      includes:
+        - kas/scarthgap.yml
+      vendor_includes:           # optional vendor-specific overrides
+        - vendor: acme
+          includes:
+            - kas/acme/scarthgap-vendor.yml
+```
+
+### `registry.features`
+
+Optional feature definitions with compatibility rules:
+
+```yaml
+registry:
+  features:
+    - slug: ota
+      description: "OTA Update via SWUpdate"
+      includes:
+        - kas/features/ota.yml
+      local_conf:
+        - "DISTRO_FEATURES:append = ' swupdate'"
+
+    - slug: secure-boot
+      description: "Secure Boot (NXP)"
+      compatibility:
+        soc_vendor: [nxp]        # empty list = all devices
+      includes:
+        - kas/features/secure-boot.yml
+      env:
+        - name: "SIGNING_KEY"
+          value: "$ENV{SIGNING_KEY}"
+```
+
+### `registry.bsp` (optional presets)
+
+Named shortcuts for device + release + features:
 
 ```yaml
 registry:
   bsp:
-    - name: my-bsp-name           # Unique identifier
-      description: "My BSP"       # Human-readable description
-      os:                         # Optional OS information
-        name: linux
-        build_system: yocto
-        version: "5.0"
-      build:
-        path: build/my-bsp        # Build output directory
-        environment:
-          container: "ubuntu-22.04"   # Reference to containers section
-          # OR use direct Docker configuration:
-          # docker:
-          #   image: "my-image:latest"
-        configuration:            # KAS configuration files (in order)
-          - kas/scarthgap.yaml
-          - kas/qemu/qemuarm64.yaml
+    - name: my-board-scarthgap
+      description: "My Board Scarthgap"
+      device: my-board
+      release: scarthgap
+      features: []
 ```
 
 ## KAS Configuration Files
@@ -343,8 +447,6 @@ registry:
 KAS configuration files define Yocto layer repositories, machine settings, and build targets. See the [examples/kas/](examples/kas/) directory for reference configurations.
 
 ### QEMU Example Configurations
-
-The `examples/` directory contains ready-to-use KAS configurations for QEMU targets:
 
 | File | Description |
 |------|-------------|
@@ -354,40 +456,12 @@ The `examples/` directory contains ready-to-use KAS configurations for QEMU targ
 | `examples/kas/qemu/qemux86-64.yaml` | QEMU x86-64 machine configuration |
 | `examples/kas/qemu/qemuarm.yaml` | QEMU ARM (32-bit) machine configuration |
 
-### KAS File Structure
-
-```yaml
-header:
-  version: 14
-  includes:            # Optional: include other KAS files
-    - base.yaml
-
-distro: poky
-machine: qemuarm64
-
-target:
-  - core-image-minimal
-
-repos:
-  poky:
-    url: "https://git.yoctoproject.org/poky"
-    commit: "abc123..."
-    path: "layers/poky"
-    layers:
-      meta:
-      meta-poky:
-
-local_conf_header:
-  my_config: |
-    DISTRO_FEATURES += "x11"
-```
-
 ## Python API
 
 You can also use `bsp-registry-tools` as a Python library:
 
 ```python
-from bsp import BspManager, EnvironmentManager, KasManager, RegistryFetcher
+from bsp import BspManager, V2Resolver, EnvironmentManager, KasManager, RegistryFetcher
 
 # Fetch registry from remote (clone on first call, pull on subsequent)
 fetcher = RegistryFetcher()
@@ -401,12 +475,21 @@ registry_path = fetcher.fetch_registry(
 manager = BspManager(str(registry_path))
 manager.initialize()
 
-# List BSPs programmatically
-for bsp in manager.model.registry.bsp:
-    print(f"{bsp.name}: {bsp.description}")
+# List devices programmatically
+for device in manager.model.registry.devices:
+    print(f"{device.slug}: {device.description}")
 
-# Get a specific BSP
-bsp = manager.get_bsp_by_name("poky-qemuarm64-scarthgap")
+# Resolve a preset
+resolved, preset = manager.resolver.resolve_preset("poky-qemuarm64-scarthgap")
+print(f"Build path: {resolved.build_path}")
+print(f"KAS files: {resolved.kas_files}")
+
+# Resolve components directly (no preset needed)
+resolved = manager.resolver.resolve(
+    device_slug="qemuarm64",
+    release_slug="scarthgap",
+    feature_slugs=["ota"],
+)
 
 # Environment variable management with $ENV{} expansion
 from bsp import EnvironmentVariable
@@ -415,14 +498,6 @@ env_vars = [
 ]
 env_manager = EnvironmentManager(env_vars)
 print(env_manager.get_value("DL_DIR"))  # Expanded path
-
-# Use KasManager directly
-kas = KasManager(
-    kas_files=["kas/scarthgap.yaml", "kas/qemu/qemuarm64.yaml"],
-    build_dir="build/my-bsp",
-    use_container=False,
-)
-kas.validate_kas_files()
 ```
 
 ## Development
@@ -446,36 +521,11 @@ pytest -v
 
 # Run with coverage report
 pytest --cov=bsp --cov-report=term-missing
-
-# Run specific test class
-pytest tests/test_bsp.py::TestEnvironmentManager -v
 ```
 
 ### Project Structure
 
 ```
-bsp-registry-tools/
-├── bsp/
-│   ├── __init__.py           # Public API exports
-│   ├── cli.py                # CLI entry point
-│   ├── bsp_manager.py        # Main BSP coordinator
-│   ├── registry_fetcher.py   # Remote registry clone/update
-│   ├── kas_manager.py        # KAS build system integration
-│   ├── environment.py        # Environment variable management
-│   ├── path_resolver.py      # Path utilities
-│   ├── models.py             # Dataclass models
-│   ├── utils.py              # YAML / Docker utilities
-│   └── exceptions.py         # Custom exceptions
-├── pyproject.toml            # Package configuration
-├── README.md                 # This file
-├── LICENSE                   # Apache 2.0 License
-├── tests/
-│   ├── conftest.py
-│   ├── test_bsp_manager.py
-│   ├── test_cli.py
-│   ├── test_registry_fetcher.py
-│   └── ...
-├── examples/
 │   ├── bsp-registry.yaml      # Sample BSP registry for QEMU targets
 │   └── kas/
 │       ├── scarthgap.yaml     # Yocto Scarthgap base config
@@ -519,6 +569,11 @@ GitHub → Actions → "Publish to PyPI" → Run workflow → Select environment
 pip install build
 python -m build
 # Artifacts are in dist/
+=======
+│   ├── bsp-registry.yml  # Sample v2.0 registry for QEMU targets
+│   └── kas/              # KAS configuration files
+├── pyproject.toml
+└── README.md
 ```
 
 ## Architecture
@@ -528,22 +583,28 @@ python -m build
 | Class | Description |
 |-------|-------------|
 | `BspManager` | Main coordinator for BSP operations |
+| `V2Resolver` | Resolves device + release + features into a build config |
 | `KasManager` | Handles KAS build system operations |
 | `EnvironmentManager` | Manages build environment variables with `$ENV{}` expansion |
 | `PathResolver` | Utility for path resolution and validation |
 | `RegistryFetcher` | Clones/updates a remote git-hosted BSP registry to a local cache |
 
-### Data Classes
+### v2.0 Data Classes
 
 | Class | Description |
 |-------|-------------|
 | `RegistryRoot` | Root registry container |
-| `Registry` | Contains list of BSP definitions |
-| `BSP` | Single BSP definition |
-| `BuildSetup` | Build configuration (path, environment, KAS files) |
-| `BuildEnvironment` | Docker/container settings |
+| `Registry` | Contains devices, releases, features, and presets |
+| `Device` | Hardware board definition |
+| `DeviceBuild` | Device build configuration (container, path, includes) |
+| `Release` | Yocto/Isar release definition |
+| `VendorIncludes` | Vendor-specific KAS includes for a release |
+| `Feature` | Optional feature definition |
+| `FeatureCompatibility` | Device compatibility constraints for a feature |
+| `BspPreset` | Named preset (device + release + features shortcut) |
 | `Docker` | Docker image and build arg configuration |
 | `EnvironmentVariable` | Name/value pair with `$ENV{}` expansion support |
+| `ResolvedConfig` | Result of resolving a device+release+features combination |
 
 ### Exceptions
 
@@ -562,3 +623,4 @@ This project is licensed under the Apache 2.0 License — see the [LICENSE](LICE
 ## Contributing
 
 Contributions are welcome! Please open an issue or submit a pull request on [GitHub](https://github.com/Advantech-EECC/bsp-registry-tools).
+

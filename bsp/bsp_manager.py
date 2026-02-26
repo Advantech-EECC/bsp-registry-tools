@@ -3,29 +3,31 @@ Main BSP management class coordinating registry, builds, and exports.
 """
 
 import logging
+import os
 import sys
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from .environment import EnvironmentManager
 from .kas_manager import KasManager
-from .models import BSP, Docker
+from .models import BspPreset, Docker
 from .path_resolver import resolver
+from .resolver import ResolvedConfig, V2Resolver
 from .utils import get_registry_from_yaml_file, build_docker
 
 # =============================================================================
-# Main BSP Management Class with Container Support
+# Main BSP Management Class with v2.0 Support
 # =============================================================================
 
 
 class BspManager:
     """
-    Main BSP management class for BSP registry management.
+    Main BSP management class for BSP registry management (v2.0 schema).
 
     This class coordinates the overall BSP management flow including
-    configuration loading, BSP discovery, build execution, shell access,
-    and configuration export operations with container support.
+    configuration loading, device/release/feature discovery, build execution,
+    shell access, and configuration export operations with container support.
     """
 
     def __init__(self, config_path: str = "bsp-registry.yaml"):
@@ -40,13 +42,14 @@ class BspManager:
         self.model = None  # Will hold parsed registry configuration
         self.env_manager = None  # Environment configuration manager
         self.containers = {}  # Dictionary of container configurations
+        self.resolver = None  # V2Resolver instance
 
     def load_configuration(self) -> None:
         """
         Load and parse BSP configuration from YAML file.
 
         Raises:
-            SystemExit: If configuration file is missing or invalid
+            SystemExit: If configuration file is missing, invalid, or not v2.0
         """
         try:
             if not self.config_path.exists():
@@ -65,7 +68,10 @@ class BspManager:
             # Initialize Environment manager if configuration exists
             if self.model.environment:
                 self.env_manager = EnvironmentManager(self.model.environment)
-                logging.info(f"Environment configuration initialized with {len(self.model.environment)} variables")
+                logging.info(
+                    f"Environment configuration initialized with "
+                    f"{len(self.model.environment)} variables"
+                )
 
         except SystemExit:
             raise
@@ -78,6 +84,9 @@ class BspManager:
         logging.info("Initializing BSP manager...")
         self.load_configuration()
 
+        # Create v2 resolver
+        self.resolver = V2Resolver(self.model, self.containers)
+
         # Validate environment configuration if present
         if self.env_manager:
             if not self.env_manager.validate_environment():
@@ -86,28 +95,108 @@ class BspManager:
 
         logging.info("BSP manager initialized successfully")
 
+    # ------------------------------------------------------------------
+    # Listing commands
+    # ------------------------------------------------------------------
+
     def list_bsp(self) -> None:
         """
-        List all available BSPs in the registry.
+        List all BSP presets defined in the registry.
 
-        Raises:
-            SystemExit: If no BSPs are found in registry
+        In v2, presets are optional shortcuts. If no presets are defined,
+        a helpful message is shown instead of exiting with an error.
         """
-        if not self.model or not self.model.registry.bsp:
-            logging.error("No BSPs found in registry")
-            sys.exit(1)
+        presets = self.model.registry.bsp if self.model else []
+        if not presets:
+            logging.info("No BSP presets defined in registry")
+            logging.info(
+                "Use 'bsp list devices', 'bsp list releases', or "
+                "'bsp list features' to see available components."
+            )
+            return
 
-        logging.info("Available BSPs:")
-        for bsp in self.model.registry.bsp:
-            print(f"- {bsp.name}: {bsp.description}")
+        logging.info("Available BSP presets:")
+        for preset in presets:
+            features_str = (
+                f", features: {', '.join(preset.features)}" if preset.features else ""
+            )
+            print(
+                f"- {preset.name}: {preset.description} "
+                f"(device: {preset.device}, release: {preset.release}{features_str})"
+            )
+
+    def list_devices(self) -> None:
+        """List all hardware devices defined in the registry."""
+        devices = self.model.registry.devices if self.model else []
+        if not devices:
+            logging.info("No devices found in registry")
+            return
+
+        logging.info("Available devices:")
+        for device in devices:
+            soc_family = (
+                f", soc_family: {device.soc_family}" if device.soc_family else ""
+            )
+            print(
+                f"- {device.slug}: {device.description} "
+                f"(vendor: {device.vendor}, soc_vendor: {device.soc_vendor}{soc_family})"
+            )
+
+    def list_releases(self, device_slug: Optional[str] = None) -> None:
+        """
+        List all release definitions in the registry.
+
+        Args:
+            device_slug: If provided, filter releases to those compatible with
+                         the device's vendor (via vendor_includes). When omitted,
+                         all releases are shown.
+        """
+        releases = self.model.registry.releases if self.model else []
+        if not releases:
+            logging.info("No releases found in registry")
+            return
+
+        if device_slug:
+            # Validate the device exists (exits on failure)
+            device = self.resolver.get_device(device_slug)
+            logging.info(f"Releases compatible with device '{device_slug}':")
+        else:
+            logging.info("Available releases:")
+            device = None
+
+        for release in releases:
+            yocto = f" [Yocto {release.yocto_version}]" if release.yocto_version else ""
+            isar = f" [Isar {release.isar_version}]" if release.isar_version else ""
+            vendors = [vi.vendor for vi in release.vendor_includes]
+            vendor_str = f", vendor overrides: {', '.join(vendors)}" if vendors else ""
+            print(
+                f"- {release.slug}: {release.description}{yocto}{isar}{vendor_str}"
+            )
+
+    def list_features(self) -> None:
+        """List all feature definitions in the registry."""
+        features = self.model.registry.features if self.model else []
+        if not features:
+            logging.info("No features found in registry")
+            return
+
+        logging.info("Available features:")
+        for feature in features:
+            compat = ""
+            if feature.compatibility:
+                parts = []
+                if feature.compatibility.vendor:
+                    parts.append(f"vendor: {feature.compatibility.vendor}")
+                if feature.compatibility.soc_vendor:
+                    parts.append(f"soc_vendor: {feature.compatibility.soc_vendor}")
+                if feature.compatibility.soc_family:
+                    parts.append(f"soc_family: {feature.compatibility.soc_family}")
+                if parts:
+                    compat = f" [requires {', '.join(parts)}]"
+            print(f"- {feature.slug}: {feature.description}{compat}")
 
     def list_containers(self) -> None:
-        """
-        List all available containers in the registry.
-
-        Raises:
-            SystemExit: If no containers are found in registry
-        """
+        """List all available containers in the registry."""
         if not self.containers:
             logging.info("No container definitions found in registry")
             return
@@ -118,73 +207,40 @@ class BspManager:
             print(f"    Image: {container_config.image}")
             print(f"    File: {container_config.file}")
             if container_config.args:
-                print(f"    Args: {', '.join([f'{arg.name}={arg.value}' for arg in container_config.args])}")
+                print(
+                    f"    Args: "
+                    f"{', '.join([f'{arg.name}={arg.value}' for arg in container_config.args])}"
+                )
 
-    def get_bsp_by_name(self, bsp_name: str) -> BSP:
+    # ------------------------------------------------------------------
+    # Preset lookup
+    # ------------------------------------------------------------------
+
+    def get_bsp_by_name(self, bsp_name: str) -> BspPreset:
         """
-        Retrieve BSP configuration by name.
+        Retrieve a BSP preset configuration by name.
 
         Args:
-            bsp_name: Name of the BSP to retrieve
+            bsp_name: Name of the preset to retrieve
 
         Returns:
-            BSP configuration object
+            BspPreset configuration object
 
         Raises:
-            SystemExit: If BSP with given name is not found
+            SystemExit: If preset with given name is not found
         """
-        for bsp in self.model.registry.bsp:
-            if bsp.name == bsp_name:
-                return bsp
+        for preset in self.model.registry.bsp or []:
+            if preset.name == bsp_name:
+                return preset
 
-        # BSP not found - show error with available options
-        logging.error(f"BSP not found: {bsp_name}")
-        logging.info("Available BSPs:")
-        for bsp in self.model.registry.bsp:
-            logging.info(f"  - {bsp.name}")
+        logging.error(f"BSP preset not found: '{bsp_name}'")
+        available = [p.name for p in (self.model.registry.bsp or [])]
+        logging.info("Available presets: " + (", ".join(available) or "(none)"))
         sys.exit(1)
 
-    def get_container_config_for_bsp(self, bsp: BSP) -> Docker:
-        """
-        Get the Docker configuration for a BSP, resolving container references.
-
-        This method supports both direct Docker configuration and container references.
-        Priority: container reference > direct Docker configuration.
-
-        Args:
-            bsp: BSP configuration object
-
-        Returns:
-            Docker configuration for the BSP
-
-        Raises:
-            SystemExit: If container reference cannot be resolved or configuration is missing
-        """
-        build_env = bsp.build.environment
-
-        # First check for container reference
-        if build_env.container:
-            container_name = build_env.container
-            if container_name in self.containers:
-                logging.info(f"Using container reference: {container_name}")
-                return self.containers[container_name]
-            else:
-                logging.error(f"Container '{container_name}' not found in registry containers")
-                logging.info("Available containers:")
-                for name in self.containers.keys():
-                    logging.info(f"  - {name}")
-                sys.exit(1)
-
-        # Fall back to direct Docker configuration
-        elif build_env.docker:
-            logging.info("Using direct Docker configuration")
-            return build_env.docker
-
-        # No container configuration found
-        else:
-            logging.error(f"No container configuration found for BSP {bsp.name}")
-            logging.info("Either specify 'container' to reference a registry container or provide 'docker' configuration")
-            sys.exit(1)
+    # ------------------------------------------------------------------
+    # Build directory helpers
+    # ------------------------------------------------------------------
 
     def prepare_build_directory(self, build_path: str) -> None:
         """
@@ -199,221 +255,410 @@ class BspManager:
         logging.info(f"Preparing build directory: {build_path}")
         resolver.ensure_directory(build_path)
 
-    def _get_kas_manager_for_bsp(self, bsp: BSP, use_container: bool = True) -> KasManager:
+    # ------------------------------------------------------------------
+    # Internal: KasManager factory for a resolved config
+    # ------------------------------------------------------------------
+
+    def _get_kas_manager_for_resolved(
+        self,
+        resolved: ResolvedConfig,
+        use_container: bool = True,
+    ) -> KasManager:
         """
-        Create and configure a KAS manager for the specified BSP.
+        Create a KasManager for the given ResolvedConfig.
+
+        If the resolved config includes local_conf additions, a temporary
+        KAS YAML file is generated to carry those into the build.  The
+        caller is responsible for deleting the temp file when done.
 
         Args:
-            bsp: BSP configuration object
-            use_container: Whether to use containerized KAS (default: True)
+            resolved: Resolved device+release+features build config
+            use_container: Whether to use containerized KAS
 
         Returns:
             Configured KasManager instance
         """
-        # Get container configuration
-        container_config = self.get_container_config_for_bsp(bsp)
-
-        # Get cache directories from environment manager
         downloads = None
         sstate = None
-
         if self.env_manager:
-            downloads = self.env_manager.get_value('DL_DIR')
-            sstate = self.env_manager.get_value('SSTATE_DIR')
+            downloads = self.env_manager.get_value("DL_DIR")
+            sstate = self.env_manager.get_value("SSTATE_DIR")
 
-        # Ensure cache directories exist if specified
         if downloads:
             resolver.ensure_directory(downloads)
         if sstate:
             resolver.ensure_directory(sstate)
 
-        # Initialize KAS manager with environment configuration
+        # Determine KAS file list: generate a composed YAML when we have
+        # local_conf additions so that everything is in a single entry-point.
+        if resolved.local_conf:
+            temp_fd, temp_path = tempfile.mkstemp(
+                prefix="bsp_composed_", suffix=".yml"
+            )
+            os.close(temp_fd)
+            self._resolver_ref = self.resolver  # keep a ref
+            self.resolver.generate_kas_yaml(
+                resolved,
+                temp_path,
+                base_dir=str(self.config_path.parent),
+            )
+            kas_files = [temp_path]
+            self._temp_kas_file = temp_path
+        else:
+            # Resolve relative paths against the registry directory
+            base = self.config_path.parent
+            kas_files = []
+            for f in resolved.kas_files:
+                p = Path(f)
+                if p.is_absolute():
+                    kas_files.append(str(p))
+                else:
+                    kas_files.append(str((base / p).resolve()))
+            self._temp_kas_file = None
+
+        container_image = (
+            resolved.container.image
+            if resolved.container and use_container
+            else None
+        )
+
         kas_mgr = KasManager(
-            bsp.build.configuration,
-            bsp.build.path,
+            kas_files,
+            resolved.build_path,
             download_dir=downloads,
             sstate_dir=sstate,
             use_container=use_container,
-            container_image=container_config.image if use_container else None,
-            search_paths=[str(self.config_path.parent)],
-            env_manager=self.env_manager
+            container_image=container_image,
+            env_manager=self.env_manager,
+        )
+        return kas_mgr
+
+    def _cleanup_temp_kas_file(self) -> None:
+        """Remove the temporary KAS YAML file if one was created."""
+        temp_file = getattr(self, "_temp_kas_file", None)
+        if temp_file and os.path.exists(temp_file):
+            try:
+                os.unlink(temp_file)
+                logging.debug(f"Removed temporary KAS file: {temp_file}")
+            except OSError as e:
+                logging.warning(f"Could not remove temporary KAS file: {e}")
+        self._temp_kas_file = None
+
+    # ------------------------------------------------------------------
+    # Build
+    # ------------------------------------------------------------------
+
+    def _build_resolved(
+        self,
+        resolved: ResolvedConfig,
+        checkout_only: bool = False,
+        label: str = "",
+    ) -> None:
+        """
+        Execute a build (or checkout) for the given ResolvedConfig.
+
+        Args:
+            resolved: Resolved build configuration
+            checkout_only: If True, only checkout and validate without building
+            label: Descriptive label for log messages
+        """
+        action = "Checking out" if checkout_only else "Building"
+        logging.info(f"{action} {label or resolved.device.slug}")
+
+        # Build Docker image if needed (skip in checkout mode)
+        if not checkout_only and resolved.container:
+            container = resolved.container
+            if container.file and container.image:
+                build_docker(".", container.file, container.image, container.args)
+        else:
+            if checkout_only:
+                logging.info("Skipping Docker build in checkout mode")
+
+        self.prepare_build_directory(resolved.build_path)
+
+        kas_mgr = self._get_kas_manager_for_resolved(
+            resolved, use_container=not checkout_only
         )
 
-        return kas_mgr
+        try:
+            config_output = kas_mgr.dump_config(show_output=False)
+            if config_output:
+                logging.debug("Configuration dump:\n" + config_output)
+
+            if checkout_only:
+                logging.info("Performing checkout and validation (no build)...")
+                kas_mgr.checkout_project()
+                logging.info(f"Checkout and validation completed successfully!")
+            else:
+                kas_mgr.build_project()
+                logging.info(f"Build completed successfully!")
+        finally:
+            self._cleanup_temp_kas_file()
 
     def build_bsp(self, bsp_name: str, checkout_only: bool = False) -> None:
         """
-        Build a specific BSP including Docker image and Yocto build.
-
-        This is the main build method that orchestrates the complete
-        BSP build process from Docker image creation to Yocto build.
-        When checkout_only is True, performs checkout and validation without the full build.
+        Build a BSP by preset name.
 
         Args:
-            bsp_name: Name of the BSP to build
-            checkout_only: If True, only checkout and validate configuration without building
+            bsp_name: Name of the BSP preset to build
+            checkout_only: If True, only checkout and validate without building
 
         Raises:
-            SystemExit: If any step of the build process fails
+            SystemExit: If preset not found or build fails
         """
-        if checkout_only:
-            logging.info(f"Checking out BSP: {bsp_name}")
-        else:
-            logging.info(f"Building BSP: {bsp_name}")
+        logging.info(f"{'Checking out' if checkout_only else 'Building'} BSP preset: {bsp_name}")
+        resolved, preset = self.resolver.resolve_preset(bsp_name)
+        self._build_resolved(
+            resolved,
+            checkout_only=checkout_only,
+            label=f"{preset.name} - {preset.description}",
+        )
 
-        # Retrieve BSP configuration
-        bsp = self.get_bsp_by_name(bsp_name)
+    def build_by_components(
+        self,
+        device_slug: str,
+        release_slug: str,
+        feature_slugs: Optional[List[str]] = None,
+        checkout_only: bool = False,
+    ) -> None:
+        """
+        Build by specifying device, release, and optional features directly.
 
-        if checkout_only:
-            logging.info(f"Checking out {bsp.name} - {bsp.description}")
-        else:
-            logging.info(f"Building {bsp.name} - {bsp.description}")
+        Args:
+            device_slug: Device slug
+            release_slug: Release slug
+            feature_slugs: Optional list of feature slugs to enable
+            checkout_only: If True, only checkout and validate without building
 
-        # Get container configuration
-        container_config = self.get_container_config_for_bsp(bsp)
+        Raises:
+            SystemExit: If any component is not found, incompatible, or build fails
+        """
+        logging.info(
+            f"{'Checking out' if checkout_only else 'Building'} "
+            f"device={device_slug} release={release_slug} "
+            f"features={feature_slugs or []}"
+        )
+        resolved = self.resolver.resolve(device_slug, release_slug, feature_slugs)
+        self._build_resolved(
+            resolved,
+            checkout_only=checkout_only,
+            label=f"{device_slug}/{release_slug}",
+        )
 
-        # Build Docker image if configured (skip for checkout mode)
-        if not checkout_only:
-            if container_config.file and container_config.image:
-                build_docker(
-                    str(self.config_path.parent),
-                    container_config.file,
-                    container_config.image,
-                    container_config.args
+    # ------------------------------------------------------------------
+    # Shell
+    # ------------------------------------------------------------------
+
+    def _shell_resolved(
+        self,
+        resolved: ResolvedConfig,
+        command: Optional[str] = None,
+        label: str = "",
+    ) -> None:
+        """
+        Start a KAS shell session for the given ResolvedConfig.
+
+        Args:
+            resolved: Resolved build configuration
+            command: Optional command to run in the shell
+            label: Descriptive label for log messages
+        """
+        logging.info(f"Starting shell for {label or resolved.device.slug}")
+
+        if resolved.container:
+            container = resolved.container
+            if container.file and container.image:
+                logging.info("Building Docker image for shell environment...")
+                build_docker(".", container.file, container.image, container.args)
+
+        self.prepare_build_directory(resolved.build_path)
+
+        kas_mgr = self._get_kas_manager_for_resolved(resolved, use_container=True)
+
+        try:
+            if command:
+                logging.info(f"Executing command: {command}")
+            else:
+                logging.info("Starting interactive KAS shell session...")
+                logging.info("Use 'Ctrl+D' or type 'exit' to leave the shell.")
+            kas_mgr.shell_session(command=command)
+        finally:
+            self._cleanup_temp_kas_file()
+
+    def shell_into_bsp(self, bsp_name: str, command: Optional[str] = None) -> None:
+        """
+        Enter interactive shell for a BSP preset.
+
+        Args:
+            bsp_name: Name of the BSP preset
+            command: Optional command to execute in the shell
+
+        Raises:
+            SystemExit: If preset not found or shell fails
+        """
+        logging.info(f"Entering shell for BSP preset: {bsp_name}")
+        resolved, preset = self.resolver.resolve_preset(bsp_name)
+        self._shell_resolved(
+            resolved, command=command, label=f"{preset.name} - {preset.description}"
+        )
+
+    def shell_by_components(
+        self,
+        device_slug: str,
+        release_slug: str,
+        feature_slugs: Optional[List[str]] = None,
+        command: Optional[str] = None,
+    ) -> None:
+        """
+        Enter interactive shell by specifying device, release, and features directly.
+
+        Args:
+            device_slug: Device slug
+            release_slug: Release slug
+            feature_slugs: Optional list of feature slugs
+            command: Optional command to execute in the shell
+
+        Raises:
+            SystemExit: If any component is not found or shell fails
+        """
+        logging.info(
+            f"Entering shell for device={device_slug} release={release_slug} "
+            f"features={feature_slugs or []}"
+        )
+        resolved = self.resolver.resolve(device_slug, release_slug, feature_slugs)
+        self._shell_resolved(
+            resolved, command=command, label=f"{device_slug}/{release_slug}"
+        )
+
+    # ------------------------------------------------------------------
+    # Export
+    # ------------------------------------------------------------------
+
+    def _export_resolved(
+        self,
+        resolved: ResolvedConfig,
+        output_file: Optional[str] = None,
+        label: str = "",
+    ) -> None:
+        """
+        Export KAS configuration for the given ResolvedConfig.
+
+        Args:
+            resolved: Resolved build configuration
+            output_file: Optional file path to save the configuration
+            label: Descriptive label for log messages
+        """
+        logging.info(f"Exporting KAS configuration for {label or resolved.device.slug}")
+
+        downloads = None
+        sstate = None
+        if self.env_manager:
+            downloads = self.env_manager.get_value("DL_DIR")
+            sstate = self.env_manager.get_value("SSTATE_DIR")
+
+        # Use a temporary build directory for export
+        with tempfile.TemporaryDirectory(prefix="bsp_export_") as temp_dir:
+            if resolved.local_conf:
+                temp_fd, temp_path = tempfile.mkstemp(
+                    prefix="bsp_composed_", suffix=".yml"
                 )
-        else:
-            logging.info("Skipping Docker build in checkout mode")
+                os.close(temp_fd)
+                self.resolver.generate_kas_yaml(
+                    resolved,
+                    temp_path,
+                    base_dir=str(self.config_path.parent),
+                )
+                kas_files = [temp_path]
+            else:
+                base = self.config_path.parent
+                kas_files = []
+                for f in resolved.kas_files:
+                    p = Path(f)
+                    if p.is_absolute():
+                        kas_files.append(str(p))
+                    else:
+                        kas_files.append(str((base / p).resolve()))
+                temp_path = None
 
-        # Prepare build directory
-        self.prepare_build_directory(bsp.build.path)
+            try:
+                kas_mgr = KasManager(
+                    kas_files,
+                    temp_dir,
+                    download_dir=downloads,
+                    sstate_dir=sstate,
+                    use_container=False,
+                    env_manager=self.env_manager,
+                )
+                config_yaml = kas_mgr.export_kas_config(output_file)
+            finally:
+                if temp_path and os.path.exists(temp_path):
+                    os.unlink(temp_path)
 
-        # Get KAS manager - use native KAS for checkout, container for builds
-        kas_mgr = self._get_kas_manager_for_bsp(bsp, use_container=not checkout_only)
+        if not output_file:
+            print("\n" + "=" * 60)
+            print(f"KAS Configuration for {label or resolved.device.slug}")
+            print("=" * 60)
+            print(config_yaml)
+            print("=" * 60)
 
-        # Dump configuration for verification (debugging)
-        config_output = kas_mgr.dump_config(show_output=False)
-        if config_output:
-            logging.debug("Configuration dump:")
-            logging.debug(config_output)
+        logging.info("Configuration exported successfully!")
 
-        if checkout_only:
-            # Execute checkout for validation only
-            logging.info("Performing checkout and validation (no build)...")
-            kas_mgr.checkout_project()
-            logging.info(f"BSP {bsp_name} checked out and validated successfully!")
-        else:
-            # Execute full build
-            kas_mgr.build_project()
-            logging.info(f"BSP {bsp_name} built successfully!")
-
-    def shell_into_bsp(self, bsp_name: str, command: str = None) -> None:
+    def export_bsp_config(
+        self, bsp_name: str, output_file: Optional[str] = None
+    ) -> None:
         """
-        Enter interactive shell session for the specified BSP.
-
-        This method launches an interactive shell within the Docker
-        container environment for the BSP, allowing manual execution
-        of build commands, BitBake operations, and debugging.
+        Export KAS configuration for a BSP preset.
 
         Args:
-            bsp_name: Name of the BSP to enter shell for
-            command: Optional command to execute in the shell (if not provided, starts interactive shell)
-
-        Raises:
-            SystemExit: If shell session cannot be started
-        """
-        logging.info(f"Entering shell for BSP: {bsp_name}")
-
-        # Retrieve BSP configuration
-        bsp = self.get_bsp_by_name(bsp_name)
-
-        logging.info(f"Starting shell session for {bsp.name} - {bsp.description}")
-
-        # Get container configuration
-        container_config = self.get_container_config_for_bsp(bsp)
-
-        # Build Docker image if configured (same as build process)
-        if container_config.file and container_config.image:
-            logging.info("Building Docker image for shell environment...")
-            build_docker(
-                str(self.config_path.parent),
-                container_config.file,
-                container_config.image,
-                container_config.args
-            )
-
-        # Prepare build directory
-        self.prepare_build_directory(bsp.build.path)
-
-        # Get KAS manager and start shell session
-        kas_mgr = self._get_kas_manager_for_bsp(bsp)
-
-        # Start interactive shell session
-        logging.info("Starting KAS shell session...")
-        if command:
-            logging.info(f"Executing command: {command}")
-        else:
-            logging.info("Interactive shell started. Available commands:")
-            logging.info("  - bitbake <recipe>    : Build a specific recipe")
-            logging.info("  - devtool <command>   : Use devtool for development workflows")
-            logging.info("  - oe-init-build-env   : Initialize build environment")
-            logging.info("  - exit                : Exit the shell session")
-            logging.info("Use 'Ctrl+D' or type 'exit' to leave the shell.")
-
-        kas_mgr.shell_session(command=command)
-
-    def export_bsp_config(self, bsp_name: str, output_file: Optional[str] = None) -> None:
-        """
-        Export BSP configuration in KAS format.
-
-        Args:
-            bsp_name: Name of the BSP to export
+            bsp_name: Name of the BSP preset to export
             output_file: Optional file path to save the configuration
 
         Raises:
-            SystemExit: If export fails
+            SystemExit: If preset not found or export fails
         """
-        logging.info(f"Exporting KAS configuration for BSP: {bsp_name}")
+        logging.info(f"Exporting KAS configuration for BSP preset: {bsp_name}")
+        resolved, preset = self.resolver.resolve_preset(bsp_name)
+        self._export_resolved(
+            resolved,
+            output_file=output_file,
+            label=f"{preset.name} - {preset.description}",
+        )
 
-        # Retrieve BSP configuration
-        bsp = self.get_bsp_by_name(bsp_name)
+    def export_by_components(
+        self,
+        device_slug: str,
+        release_slug: str,
+        feature_slugs: Optional[List[str]] = None,
+        output_file: Optional[str] = None,
+    ) -> None:
+        """
+        Export KAS configuration by specifying device, release, and features directly.
 
-        logging.info(f"Exporting configuration for {bsp.name} - {bsp.description}")
+        Args:
+            device_slug: Device slug
+            release_slug: Release slug
+            feature_slugs: Optional list of feature slugs
+            output_file: Optional file path to save the configuration
 
-        # Get cache directories from environment manager
-        downloads = None
-        sstate = None
+        Raises:
+            SystemExit: If any component is not found or export fails
+        """
+        logging.info(
+            f"Exporting configuration for device={device_slug} release={release_slug} "
+            f"features={feature_slugs or []}"
+        )
+        resolved = self.resolver.resolve(device_slug, release_slug, feature_slugs)
+        self._export_resolved(
+            resolved,
+            output_file=output_file,
+            label=f"{device_slug}/{release_slug}",
+        )
 
-        if self.env_manager:
-            downloads = self.env_manager.get_value('DL_DIR')
-            sstate = self.env_manager.get_value('SSTATE_DIR')
-
-        # Create a temporary build directory for export operations
-        with tempfile.TemporaryDirectory(prefix=f"bsp_export_{bsp_name}_") as temp_dir:
-            # Initialize KAS manager with environment configuration
-            kas_mgr = KasManager(
-                bsp.build.configuration,
-                temp_dir,  # Use temporary directory for export
-                download_dir=downloads,
-                sstate_dir=sstate,
-                use_container=False,  # Don't need container for export
-                search_paths=[str(self.config_path.parent)],
-                env_manager=self.env_manager
-            )
-
-            # Export KAS configuration
-            config_yaml = kas_mgr.export_kas_config(output_file)
-
-            # If no output file specified, print to stdout
-            if not output_file:
-                print("\n" + "="*60)
-                print(f"KAS Configuration for BSP: {bsp_name}")
-                print("="*60)
-                print(config_yaml)
-                print("="*60)
-
-        logging.info(f"BSP {bsp_name} configuration exported successfully!")
+    # ------------------------------------------------------------------
+    # Cleanup
+    # ------------------------------------------------------------------
 
     def cleanup(self) -> None:
         """Cleanup resources and perform any necessary finalization."""
         logging.debug("Cleaning up resources...")
-        # Add cleanup logic here if needed (e.g., temp files, connections)
+        self._cleanup_temp_kas_file()

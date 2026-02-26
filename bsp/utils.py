@@ -14,6 +14,8 @@ from typing import List, Optional, Dict, Any
 
 from .models import Docker, DockerArg, RegistryRoot
 
+SUPPORTED_REGISTRY_VERSION = "2.0"
+
 # =============================================================================
 # YAML Configuration Parser with Container Support
 # =============================================================================
@@ -121,6 +123,17 @@ def get_registry_from_yaml_file(filename: Path) -> RegistryRoot:
     """
     yaml_string = read_yaml_file(filename)
     yaml_dict = parse_yaml_file(yaml_string)
+
+    # Fail fast if the registry version is not supported
+    spec = yaml_dict.get('specification') or {}
+    version = spec.get('version') if isinstance(spec, dict) else None
+    if version != SUPPORTED_REGISTRY_VERSION:
+        logging.error(
+            f"Unsupported registry version '{version}' in {filename}. "
+            f"This tool requires version '{SUPPORTED_REGISTRY_VERSION}'. "
+            f"See docs/migration-v1-to-v2.md for upgrade instructions."
+        )
+        sys.exit(1)
 
     # Pre-process containers list to dictionary format if needed
     if 'containers' in yaml_dict and isinstance(yaml_dict['containers'], list):

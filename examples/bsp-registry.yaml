@@ -1,5 +1,5 @@
 specification:
-  version: "1.0"
+  version: "2.0"
 
 # Global environment variables for all builds
 # Use $ENV{VAR_NAME} syntax to reference system environment variables
@@ -31,14 +31,77 @@ containers:
           value: "5.2"
 
 registry:
+
+  # =====================================
+  # Devices
+  # =====================================
+
+  devices:
+
+    - slug: qemuarm64
+      description: "QEMU ARM64 (emulated)"
+      vendor: qemu
+      soc_vendor: arm
+      build:
+        container: "debian-bookworm"
+        path: build/qemu-arm64
+        includes:
+          - kas/qemu/qemuarm64.yml
+
+    - slug: qemuarm
+      description: "QEMU ARM (32-bit, emulated)"
+      vendor: qemu
+      soc_vendor: arm
+      build:
+        container: "debian-bookworm"
+        path: build/qemu-arm
+        includes:
+          - kas/qemu/qemuarm.yml
+
+    - slug: qemux86-64
+      description: "QEMU x86-64 (emulated)"
+      vendor: qemu
+      soc_vendor: intel
+      build:
+        container: "debian-bookworm"
+        path: build/qemu-x86-64
+        includes:
+          - kas/qemu/qemux86-64.yml
+
+  # =====================================
+  # Releases
+  # =====================================
+
+  releases:
+
+    - slug: scarthgap
+      description: "Yocto 5.0 LTS (Scarthgap)"
+      yocto_version: "5.0"
+      includes:
+        - kas/scarthgap.yml
+
+    - slug: styhead
+      description: "Yocto 5.1 (Styhead)"
+      yocto_version: "5.1"
+      includes:
+        - kas/styhead.yml
+
+  # =====================================
+  # Features (optional add-ons)
+  # =====================================
+
+  features: []
+
+  # =====================================
+  # BSP Presets (named shortcuts)
+  # =====================================
+
   bsp:
 
-    # =====================================
-    # QEMU ARM64 BSPs
-    # =====================================
-
+    # --- QEMU ARM64 ---
     - name: poky-qemuarm64-scarthgap
       description: "Poky QEMU ARM64 Scarthgap (Yocto 5.0 LTS)"
+<<<<<<< HEAD:examples/bsp-registry.yaml
       os:
         name: linux
         build_system: yocto
@@ -68,9 +131,22 @@ registry:
     # =====================================
     # QEMU x86-64 BSPs
     # =====================================
+=======
+      device: qemuarm64
+      release: scarthgap
+      features: []
 
+    - name: poky-qemuarm64-styhead
+      description: "Poky QEMU ARM64 Styhead (Yocto 5.1)"
+      device: qemuarm64
+      release: styhead
+      features: []
+>>>>>>> b47ef93 (feat: implement BSP registry schema v2.0 (breaking change, drops v1.0 support)):examples/bsp-registry.yml
+
+    # --- QEMU x86-64 ---
     - name: poky-qemux86-64-scarthgap
       description: "Poky QEMU x86-64 Scarthgap (Yocto 5.0 LTS)"
+<<<<<<< HEAD:examples/bsp-registry.yaml
       os:
         name: linux
         build_system: yocto
@@ -100,9 +176,22 @@ registry:
     # =====================================
     # QEMU ARM (32-bit) BSPs
     # =====================================
+=======
+      device: qemux86-64
+      release: scarthgap
+      features: []
 
+    - name: poky-qemux86-64-styhead
+      description: "Poky QEMU x86-64 Styhead (Yocto 5.1)"
+      device: qemux86-64
+      release: styhead
+      features: []
+>>>>>>> b47ef93 (feat: implement BSP registry schema v2.0 (breaking change, drops v1.0 support)):examples/bsp-registry.yml
+
+    # --- QEMU ARM (32-bit) ---
     - name: poky-qemuarm-scarthgap
       description: "Poky QEMU ARM (32-bit) Scarthgap (Yocto 5.0 LTS)"
+<<<<<<< HEAD:examples/bsp-registry.yaml
       os:
         name: linux
         build_system: yocto
@@ -154,3 +243,8 @@ registry:
           - kas/isar/distro/debian-trixie.yaml
           - kas/isar/qemu/common.yaml
           - kas/isar/qemu/qemux86-64.yaml
+=======
+      device: qemuarm
+      release: scarthgap
+      features: []
+>>>>>>> b47ef93 (feat: implement BSP registry schema v2.0 (breaking change, drops v1.0 support)):examples/bsp-registry.yml

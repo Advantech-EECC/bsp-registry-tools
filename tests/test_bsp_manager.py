@@ -1,25 +1,27 @@
 """
-Tests for BspManager registry operations.
+Tests for BspManager registry operations (v2.0 schema).
 """
 
 import pytest
+from unittest.mock import patch, MagicMock
 
-from bsp import BspManager, Docker
-from .conftest import EMPTY_REGISTRY_YAML
+from bsp import BspManager, BspPreset, Docker, V2Resolver
+from .conftest import EMPTY_REGISTRY_YAML, REGISTRY_WITH_FEATURES_YAML
 
 
-class TestBspManager:
+class TestBspManagerInit:
     def test_init(self, tmp_dir):
         manager = BspManager(config_path=str(tmp_dir / "bsp-registry.yml"))
         assert manager.model is None
         assert manager.env_manager is None
         assert manager.containers == {}
+        assert manager.resolver is None
 
     def test_load_configuration_success(self, registry_file):
         manager = BspManager(config_path=str(registry_file))
         manager.load_configuration()
         assert manager.model is not None
-        assert len(manager.model.registry.bsp) == 1
+        assert len(manager.model.registry.devices) == 1
 
     def test_load_configuration_missing_file(self, tmp_dir):
         manager = BspManager(config_path=str(tmp_dir / "missing.yml"))
@@ -36,32 +38,63 @@ class TestBspManager:
         manager.load_configuration()
         assert manager.env_manager is not None
 
-    def test_initialize(self, registry_file):
+    def test_initialize_creates_resolver(self, registry_file):
         manager = BspManager(config_path=str(registry_file))
         manager.initialize()
-        assert manager.model is not None
+        assert manager.resolver is not None
+        assert isinstance(manager.resolver, V2Resolver)
 
-    def test_list_bsp_outputs_names(self, registry_file, capsys):
+
+class TestBspManagerList:
+    def test_list_bsp_outputs_preset_name(self, registry_file, capsys):
         manager = BspManager(config_path=str(registry_file))
         manager.initialize()
         manager.list_bsp()
         captured = capsys.readouterr()
         assert "test-bsp" in captured.out
 
-    def test_list_bsp_outputs_descriptions(self, registry_file, capsys):
+    def test_list_bsp_outputs_preset_description(self, registry_file, capsys):
         manager = BspManager(config_path=str(registry_file))
         manager.initialize()
         manager.list_bsp()
         captured = capsys.readouterr()
         assert "Test BSP" in captured.out
 
-    def test_list_bsp_empty_registry_exits(self, tmp_dir):
+    def test_list_bsp_empty_registry_does_not_exit(self, tmp_dir):
         empty_file = tmp_dir / "empty.yml"
         empty_file.write_text(EMPTY_REGISTRY_YAML)
         manager = BspManager(config_path=str(empty_file))
         manager.initialize()
-        with pytest.raises(SystemExit):
-            manager.list_bsp()
+        # Should NOT raise; just logs info
+        manager.list_bsp()
+
+    def test_list_devices(self, registry_file, capsys):
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        manager.list_devices()
+        captured = capsys.readouterr()
+        assert "test-device" in captured.out
+        assert "test-vendor" in captured.out
+
+    def test_list_releases(self, registry_file, capsys):
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        manager.list_releases()
+        captured = capsys.readouterr()
+        assert "test-release" in captured.out
+
+    def test_list_features_empty(self, registry_file, capsys):
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        manager.list_features()  # Should not raise
+
+    def test_list_features_with_features(self, registry_with_features_file, capsys):
+        manager = BspManager(config_path=str(registry_with_features_file))
+        manager.initialize()
+        manager.list_features()
+        captured = capsys.readouterr()
+        assert "ota" in captured.out
+        assert "secure-boot" in captured.out
 
     def test_list_containers_outputs_names(self, registry_file, capsys):
         manager = BspManager(config_path=str(registry_file))
@@ -73,17 +106,19 @@ class TestBspManager:
     def test_list_containers_empty(self, tmp_dir):
         no_containers_yaml = """
 specification:
-  version: "1.0"
+  version: "2.0"
 registry:
-  bsp:
-    - name: test-bsp
-      description: "Test BSP"
+  devices:
+    - slug: test-device
+      description: "Test Device"
+      vendor: vendor
+      soc_vendor: soc
       build:
+        container: "no-container"
         path: build/test
-        environment:
-          container: "ubuntu-22.04"
-        configuration:
-          - test.yml
+  releases: []
+  features: []
+  bsp: []
 """
         registry_file = tmp_dir / "bsp-registry.yml"
         registry_file.write_text(no_containers_yaml)
@@ -92,11 +127,32 @@ registry:
         # Should not raise, just log info
         manager.list_containers()
 
+    def test_multiple_presets(self, registry_with_env_file):
+        manager = BspManager(config_path=str(registry_with_env_file))
+        manager.initialize()
+        assert len(manager.model.registry.bsp) == 2
+        names = [b.name for b in manager.model.registry.bsp]
+        assert "qemu-arm64" in names
+        assert "qemu-x86-64" in names
+
+    def test_multiple_devices(self, registry_with_env_file):
+        manager = BspManager(config_path=str(registry_with_env_file))
+        manager.initialize()
+        assert len(manager.model.registry.devices) == 2
+        slugs = [d.slug for d in manager.model.registry.devices]
+        assert "qemu-arm64" in slugs
+        assert "qemu-x86-64" in slugs
+
+
+class TestBspManagerPresetLookup:
     def test_get_bsp_by_name_found(self, registry_file):
         manager = BspManager(config_path=str(registry_file))
         manager.initialize()
-        bsp_obj = manager.get_bsp_by_name("test-bsp")
-        assert bsp_obj.name == "test-bsp"
+        preset = manager.get_bsp_by_name("test-bsp")
+        assert isinstance(preset, BspPreset)
+        assert preset.name == "test-bsp"
+        assert preset.device == "test-device"
+        assert preset.release == "test-release"
 
     def test_get_bsp_by_name_not_found(self, registry_file):
         manager = BspManager(config_path=str(registry_file))
@@ -104,62 +160,112 @@ registry:
         with pytest.raises(SystemExit):
             manager.get_bsp_by_name("nonexistent-bsp")
 
-    def test_get_container_config_for_bsp_with_container_ref(self, registry_file):
-        manager = BspManager(config_path=str(registry_file))
-        manager.initialize()
-        bsp_obj = manager.get_bsp_by_name("test-bsp")
-        container = manager.get_container_config_for_bsp(bsp_obj)
-        assert isinstance(container, Docker)
-        assert container.image == "test/ubuntu-22.04:latest"
 
-    def test_get_container_config_missing_container_ref(self, tmp_dir):
-        yaml_content = """
-specification:
-  version: "1.0"
-registry:
-  bsp:
-    - name: test-bsp
-      description: "Test BSP"
-      build:
-        path: build/test
-        environment:
-          container: "nonexistent-container"
-        configuration:
-          - test.yml
-containers: []
-"""
-        registry_file = tmp_dir / "bsp-registry.yml"
-        registry_file.write_text(yaml_content)
+class TestBspManagerResolver:
+    def test_resolver_resolves_preset(self, registry_file):
         manager = BspManager(config_path=str(registry_file))
         manager.initialize()
-        bsp_obj = manager.get_bsp_by_name("test-bsp")
+        resolved, preset = manager.resolver.resolve_preset("test-bsp")
+        assert resolved.device.slug == "test-device"
+        assert resolved.release.slug == "test-release"
+        assert resolved.container is not None
+        assert resolved.container.image == "test/ubuntu-22.04:latest"
+
+    def test_resolver_get_device(self, registry_file):
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        device = manager.resolver.get_device("test-device")
+        assert device.slug == "test-device"
+        assert device.vendor == "test-vendor"
+
+    def test_resolver_get_device_not_found(self, registry_file):
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
         with pytest.raises(SystemExit):
-            manager.get_container_config_for_bsp(bsp_obj)
+            manager.resolver.get_device("nonexistent")
 
-    def test_get_container_config_with_direct_docker(self, tmp_dir):
-        yaml_content = """
-specification:
-  version: "1.0"
-registry:
-  bsp:
-    - name: test-bsp
-      description: "Test BSP"
-      build:
-        path: build/test
-        environment:
-          docker:
-            image: "direct-image:latest"
-        configuration:
-          - test.yml
-"""
-        registry_file = tmp_dir / "bsp-registry.yml"
-        registry_file.write_text(yaml_content)
+    def test_resolver_get_release(self, registry_file):
         manager = BspManager(config_path=str(registry_file))
         manager.initialize()
-        bsp_obj = manager.get_bsp_by_name("test-bsp")
-        container = manager.get_container_config_for_bsp(bsp_obj)
-        assert container.image == "direct-image:latest"
+        release = manager.resolver.get_release("test-release")
+        assert release.slug == "test-release"
 
+    def test_resolver_get_feature(self, registry_with_features_file):
+        manager = BspManager(config_path=str(registry_with_features_file))
+        manager.initialize()
+        feature = manager.resolver.get_feature("ota")
+        assert feature.slug == "ota"
+
+    def test_resolver_build_path_from_device(self, registry_file):
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("test-bsp")
+        assert resolved.build_path == "build/test"
+
+    def test_resolver_kas_files_order(self, registry_file):
+        """Release includes come before device includes."""
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("test-bsp")
+        # release includes: ["test-base.yml"]
+        # device includes: ["test.yml"]
+        assert "test-base.yml" in resolved.kas_files
+        assert "test.yml" in resolved.kas_files
+        assert resolved.kas_files.index("test-base.yml") < resolved.kas_files.index("test.yml")
+
+    def test_resolver_feature_compatibility_ok(self, registry_with_features_file):
+        manager = BspManager(config_path=str(registry_with_features_file))
+        manager.initialize()
+        # imx8-board has soc_vendor=nxp, secure-boot requires nxp -> compatible
+        resolved = manager.resolver.resolve("imx8-board", "scarthgap", ["secure-boot"])
+        assert len(resolved.features) == 1
+
+    def test_resolver_feature_compatibility_fails(self, registry_with_features_file):
+        """secure-boot requires soc_vendor=nxp; qemu-arm64 has soc_vendor=arm -> incompatible."""
+        manager = BspManager(config_path=str(registry_with_features_file))
+        manager.initialize()
+        with pytest.raises(SystemExit):
+            manager.resolver.resolve("qemu-arm64", "scarthgap", ["secure-boot"])
+
+    def test_resolver_local_conf_from_feature(self, registry_with_features_file):
+        manager = BspManager(config_path=str(registry_with_features_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("imx8-board", "scarthgap", ["ota"])
+        assert any("swupdate" in lc for lc in resolved.local_conf)
+
+    def test_resolver_env_from_feature(self, registry_with_features_file):
+        manager = BspManager(config_path=str(registry_with_features_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("imx8-board", "scarthgap", ["secure-boot"])
+        env_names = [e.name for e in resolved.env]
+        assert "SIGNING_KEY" in env_names
+
+
+class TestBspManagerBuildByComponents:
+    def test_build_by_components_calls_kas(self, registry_with_features_file):
+        manager = BspManager(config_path=str(registry_with_features_file))
+        manager.initialize()
+        with patch("bsp.bsp_manager.build_docker"), \
+             patch("bsp.kas_manager.KasManager.build_project") as mock_build, \
+             patch("bsp.kas_manager.KasManager.dump_config", return_value=None), \
+             patch("bsp.kas_manager.KasManager.validate_kas_files", return_value=True), \
+             patch("bsp.kas_manager.KasManager.check_kas_available", return_value=True):
+            manager.build_by_components("imx8-board", "scarthgap")
+        mock_build.assert_called_once()
+
+    def test_build_bsp_preset_calls_kas(self, registry_with_features_file):
+        manager = BspManager(config_path=str(registry_with_features_file))
+        manager.initialize()
+        with patch("bsp.bsp_manager.build_docker"), \
+             patch("bsp.kas_manager.KasManager.build_project") as mock_build, \
+             patch("bsp.kas_manager.KasManager.dump_config", return_value=None), \
+             patch("bsp.kas_manager.KasManager.validate_kas_files", return_value=True), \
+             patch("bsp.kas_manager.KasManager.check_kas_available", return_value=True):
+            manager.build_bsp("imx8-scarthgap-ota")
+        mock_build.assert_called_once()
+
+
+class TestBspManagerMisc:
     def test_prepare_build_directory(self, tmp_dir, registry_file):
         manager = BspManager(config_path=str(registry_file))
         manager.initialize()
@@ -172,8 +278,8 @@ registry:
         manager.initialize()
         manager.cleanup()  # Should not raise
 
-    def test_multiple_bsps(self, registry_with_env_file):
-        manager = BspManager(config_path=str(registry_with_env_file))
+    def test_initialize(self, registry_file):
+        manager = BspManager(config_path=str(registry_file))
         manager.initialize()
         assert len(manager.model.registry.bsp) == 2
         names = [b.name for b in manager.model.registry.bsp]
@@ -311,3 +417,4 @@ containers:
 
         kas_mgr = manager._get_kas_manager_for_bsp(bsp_obj, use_container=False)
         assert str(registry_dir) in kas_mgr.search_paths
+        assert manager.model is not None

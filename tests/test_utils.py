@@ -1,5 +1,5 @@
 """
-Tests for YAML parsing utilities and container list-to-dict conversion.
+Tests for YAML parsing utilities and v2.0 registry parsing.
 """
 
 import pytest
@@ -7,6 +7,10 @@ import pytest
 from bsp import (
     Docker,
     RegistryRoot,
+    Device,
+    Release,
+    Feature,
+    BspPreset,
     read_yaml_file,
     parse_yaml_file,
     get_registry_from_yaml_file,
@@ -48,9 +52,29 @@ class TestYamlParsing:
     def test_get_registry_from_yaml_file(self, registry_file):
         result = get_registry_from_yaml_file(registry_file)
         assert isinstance(result, RegistryRoot)
-        assert result.specification.version == "1.0"
+        assert result.specification.version == "2.0"
+
+    def test_get_registry_has_device(self, registry_file):
+        result = get_registry_from_yaml_file(registry_file)
+        assert len(result.registry.devices) == 1
+        assert isinstance(result.registry.devices[0], Device)
+        assert result.registry.devices[0].slug == "test-device"
+
+    def test_get_registry_has_release(self, registry_file):
+        result = get_registry_from_yaml_file(registry_file)
+        assert len(result.registry.releases) == 1
+        assert isinstance(result.registry.releases[0], Release)
+        assert result.registry.releases[0].slug == "test-release"
+
+    def test_get_registry_has_preset(self, registry_file):
+        result = get_registry_from_yaml_file(registry_file)
         assert len(result.registry.bsp) == 1
-        assert result.registry.bsp[0].name == "test-bsp"
+        preset = result.registry.bsp[0]
+        assert isinstance(preset, BspPreset)
+        assert preset.name == "test-bsp"
+        assert preset.description == "Test BSP"
+        assert preset.device == "test-device"
+        assert preset.release == "test-release"
 
     def test_get_registry_from_yaml_file_with_env(self, registry_with_env_file):
         result = get_registry_from_yaml_file(registry_with_env_file)
@@ -59,22 +83,19 @@ class TestYamlParsing:
         assert "DL_DIR" in env_names
         assert "SSTATE_DIR" in env_names
 
-    def test_get_registry_containers_converted(self, registry_file):
+    def test_get_registry_containers_parsed(self, registry_file):
         result = get_registry_from_yaml_file(registry_file)
         assert "ubuntu-22.04" in result.containers
         container = result.containers["ubuntu-22.04"]
         assert isinstance(container, Docker)
         assert container.image == "test/ubuntu-22.04:latest"
 
-    def test_get_registry_bsp_has_description(self, registry_file):
+    def test_get_registry_device_build_config(self, registry_file):
         result = get_registry_from_yaml_file(registry_file)
-        assert result.registry.bsp[0].description == "Test BSP"
-
-    def test_get_registry_bsp_build_config(self, registry_file):
-        result = get_registry_from_yaml_file(registry_file)
-        bsp_obj = result.registry.bsp[0]
-        assert bsp_obj.build.path == "build/test"
-        assert bsp_obj.build.configuration == ["test.yml"]
+        device = result.registry.devices[0]
+        assert device.build.path == "build/test"
+        assert device.build.includes == ["test.yml"]
+        assert device.build.container == "ubuntu-22.04"
 
     def test_get_registry_missing_file(self, tmp_dir):
         with pytest.raises(SystemExit):
@@ -85,6 +106,45 @@ class TestYamlParsing:
         invalid_file.write_text(INVALID_YAML)
         with pytest.raises(SystemExit):
             get_registry_from_yaml_file(invalid_file)
+
+    def test_get_registry_version_check_fails_for_v1(self, tmp_dir):
+        """Fail fast if specification.version is not '2.0'."""
+        v1_yaml = """
+specification:
+  version: "1.0"
+registry:
+  bsp: []
+"""
+        v1_file = tmp_dir / "v1.yml"
+        v1_file.write_text(v1_yaml)
+        with pytest.raises(SystemExit):
+            get_registry_from_yaml_file(v1_file)
+
+    def test_get_registry_version_check_fails_for_missing(self, tmp_dir):
+        no_ver_yaml = """
+registry:
+  devices: []
+  releases: []
+"""
+        no_ver_file = tmp_dir / "no_ver.yml"
+        no_ver_file.write_text(no_ver_yaml)
+        with pytest.raises(SystemExit):
+            get_registry_from_yaml_file(no_ver_file)
+
+    def test_get_registry_with_features(self, registry_with_features_file):
+        result = get_registry_from_yaml_file(registry_with_features_file)
+        assert len(result.registry.features) == 2
+        slugs = [f.slug for f in result.registry.features]
+        assert "ota" in slugs
+        assert "secure-boot" in slugs
+
+    def test_get_registry_feature_compatibility(self, registry_with_features_file):
+        result = get_registry_from_yaml_file(registry_with_features_file)
+        secure_boot = next(
+            f for f in result.registry.features if f.slug == "secure-boot"
+        )
+        assert secure_boot.compatibility is not None
+        assert "nxp" in secure_boot.compatibility.soc_vendor
 
 
 # =============================================================================

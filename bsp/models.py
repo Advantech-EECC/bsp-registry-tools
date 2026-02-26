@@ -1,5 +1,5 @@
 """
-Configuration data classes for BSP registry definitions.
+Configuration data classes for BSP registry definitions (schema v2.0).
 """
 
 from dataclasses import dataclass, field
@@ -21,7 +21,7 @@ def empty_dict():
 
 
 # =============================================================================
-# Configuration Data Classes
+# Shared Data Classes (used across v1 and v2)
 # =============================================================================
 
 @dataclass
@@ -66,112 +66,176 @@ class Docker:
 
 
 @dataclass
-class ContainerDefinition:
-    """
-    Container definition with name and Docker configuration.
-
-    Attributes:
-        name: Container name/identifier (e.g., 'ubuntu-20.04')
-        docker: Docker configuration for this container
-    """
-    name: str
-    docker: Docker
-
-
-@dataclass
-class BuildEnvironment:
-    """
-    Build environment configuration including Docker settings.
-
-    Attributes:
-        container: Name of the container to use (references containers in registry)
-        docker: Direct Docker configuration (alternative to container reference)
-    """
-    container: Optional[str] = None
-    docker: Optional[Docker] = None
-
-
-@dataclass
-class BuildSetup:
-    """
-    Complete build setup configuration.
-
-    Attributes:
-        path: Build directory path for output artifacts
-        environment: Build environment settings (Docker, container reference)
-        docker: Docker runtime to use (docker, podman, etc.)
-        configuration: List of KAS configuration files for the build
-    """
-    path: str
-    environment: BuildEnvironment
-    docker: Optional[str]
-    configuration: List[str]
-
-
-@dataclass
 class Specification:
     """
     Registry specification version.
 
     Attributes:
-        version: Specification version string (e.g., '1.0')
+        version: Specification version string (e.g., '2.0')
     """
     version: str
 
 
-@dataclass
-class OperatingSystem:
-    """
-    Operating system configuration for the BSP.
-
-    Attributes:
-        name: OS name (e.g., 'linux')
-        build_system: Build system (e.g., 'yocto')
-        version: OS version string
-    """
-    name: str
-    build_system: str
-    version: str
-
+# =============================================================================
+# v2.0 Data Classes
+# =============================================================================
 
 @dataclass
-class BSP:
+class DeviceBuild:
     """
-    Board Support Package definition.
+    Build configuration for a hardware device.
 
     Attributes:
-        name: Unique BSP identifier
+        container: Name of the container to use (references containers section)
+        path: Build output directory for Yocto artifacts
+        includes: List of device-specific KAS configuration files
+        local_conf: List of local.conf lines to append for this device
+    """
+    container: str
+    path: str
+    includes: List[str] = field(default_factory=empty_list)
+    local_conf: List[str] = field(default_factory=empty_list)
+
+
+@dataclass
+class Device:
+    """
+    Hardware device/board definition.
+
+    Attributes:
+        slug: Unique identifier for the device
         description: Human-readable description
-        os: Operating system configuration
-        build: Build configuration and setup
+        vendor: Board vendor name (e.g., 'advantech', 'qemu')
+        soc_vendor: Silicon vendor name (e.g., 'nxp', 'intel', 'arm')
+        build: Build configuration for this device
+        soc_family: Optional SoC family identifier (e.g., 'imx8', 'cortex-a57')
+    """
+    slug: str
+    description: str
+    vendor: str
+    soc_vendor: str
+    build: DeviceBuild
+    soc_family: Optional[str] = None
+
+
+@dataclass
+class VendorIncludes:
+    """
+    Vendor-specific KAS includes for a release.
+
+    Attributes:
+        vendor: Board vendor name this applies to
+        includes: List of vendor-specific KAS files for this release
+    """
+    vendor: str
+    includes: List[str] = field(default_factory=empty_list)
+
+
+@dataclass
+class Release:
+    """
+    Yocto/Isar release definition.
+
+    Attributes:
+        slug: Unique identifier for the release (e.g., 'scarthgap')
+        description: Human-readable description
+        includes: Base KAS configuration files for this release
+        yocto_version: Yocto Project version string (e.g., '5.0')
+        isar_version: Isar version string (optional)
+        vendor_includes: Vendor-specific KAS includes for this release
+    """
+    slug: str
+    description: str
+    includes: List[str] = field(default_factory=empty_list)
+    yocto_version: Optional[str] = None
+    isar_version: Optional[str] = None
+    vendor_includes: List[VendorIncludes] = field(default_factory=empty_list)
+
+
+@dataclass
+class FeatureCompatibility:
+    """
+    Compatibility constraints for a feature.
+
+    Empty lists mean "all" (no restriction on that dimension).
+
+    Attributes:
+        vendor: List of compatible board vendors (empty = all vendors)
+        soc_vendor: List of compatible SoC vendors (empty = all)
+        soc_family: List of compatible SoC families (empty = all)
+    """
+    vendor: List[str] = field(default_factory=empty_list)
+    soc_vendor: List[str] = field(default_factory=empty_list)
+    soc_family: List[str] = field(default_factory=empty_list)
+
+
+@dataclass
+class Feature:
+    """
+    Optional BSP feature definition (e.g., OTA update, secure boot).
+
+    Attributes:
+        slug: Unique identifier for the feature
+        description: Human-readable description
+        compatibility: Device compatibility constraints
+        includes: KAS configuration files that enable this feature
+        local_conf: local.conf lines to append when feature is enabled
+        env: Environment variables required/set by this feature
+    """
+    slug: str
+    description: str
+    compatibility: Optional[FeatureCompatibility] = None
+    includes: List[str] = field(default_factory=empty_list)
+    local_conf: List[str] = field(default_factory=empty_list)
+    env: List[EnvironmentVariable] = field(default_factory=empty_list)
+
+
+@dataclass
+class BspPreset:
+    """
+    Named BSP preset (optional shortcut for a device+release+features combination).
+
+    Attributes:
+        name: Unique preset name
+        description: Human-readable description
+        device: Device slug (references a device in registry.devices)
+        release: Release slug (references a release in registry.releases)
+        features: List of feature slugs to enable (references registry.features)
     """
     name: str
     description: str
-    build: BuildSetup
-    os: Optional[OperatingSystem] = None
+    device: str
+    release: str
+    features: List[str] = field(default_factory=empty_list)
 
 
 @dataclass
 class Registry:
     """
-    Main registry containing BSP definitions.
+    Main v2.0 registry containing devices, releases, features, and presets.
 
     Attributes:
-        bsp: List of BSP definitions in the registry
+        devices: List of hardware device definitions
+        releases: List of Yocto/Isar release definitions
+        features: List of optional feature definitions
+        bsp: Optional list of named BSP presets (shortcuts)
     """
-    bsp: Optional[List[BSP]] = field(default_factory=empty_list)
+    devices: List[Device] = field(default_factory=empty_list)
+    releases: List[Release] = field(default_factory=empty_list)
+    features: List[Feature] = field(default_factory=empty_list)
+    bsp: Optional[List[BspPreset]] = field(default_factory=empty_list)
 
 
 @dataclass
 class RegistryRoot:
     """
-    Root container for the registry configuration.
+    Root container for the v2.0 registry configuration.
 
     Attributes:
-        specification: Specification version information
-        registry: Main registry data containing BSP definitions
-        containers: Dictionary of container definitions keyed by name
-        environment: Global environment variables for all builds (supports expansion)
+        specification: Specification version information (must be '2.0')
+        registry: Main registry data containing devices, releases, features, and presets
+        containers: Dictionary of Docker container definitions keyed by name
+        environment: Global environment variables for all builds (supports $ENV{} expansion)
     """
     specification: Specification
     registry: Registry
