@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bsp-registry-tools"
-version = "0.0.1.3"
+version = "0.0.2.0"
 description = "Advantech Board Support Package (BSP) Registry Manager"
 readme = "README.md"
 license = {file = "LICENSE"}
