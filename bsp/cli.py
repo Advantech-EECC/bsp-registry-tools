@@ -229,6 +229,16 @@ def main() -> int:
         # ----------------------------------------------------------------
         # Dispatch commands
         # ----------------------------------------------------------------
+        def _check_exclusive(bsp_name, device, release, parser):
+            """Return True and log error if bsp_name and device/release are both set."""
+            if bsp_name and (device or release):
+                logging.error(
+                    "Cannot mix a positional preset name with --device/--release. "
+                    "Use either '<command> <preset>' or "
+                    "'<command> --device <d> --release <r>'."
+                )
+                return True
+            return False
         if args.command == 'build':
             checkout_only = getattr(args, 'checkout', False)
             device = getattr(args, 'device', None)
@@ -236,12 +246,7 @@ def main() -> int:
             features = getattr(args, 'features', None) or []
             bsp_name = getattr(args, 'bsp_name', None)
 
-            if bsp_name and (device or release):
-                logging.error(
-                    "Cannot mix positional bsp_name with --device/--release. "
-                    "Use either 'bsp build <preset>' or "
-                    "'bsp build --device <d> --release <r>'."
-                )
+            if _check_exclusive(bsp_name, device, release, build_parser):
                 return 1
             if bsp_name:
                 bsp_mgr.build_bsp(bsp_name, checkout_only=checkout_only)
@@ -278,10 +283,7 @@ def main() -> int:
             bsp_name = getattr(args, 'bsp_name', None)
             output = getattr(args, 'output', None)
 
-            if bsp_name and (device or release):
-                logging.error(
-                    "Cannot mix positional bsp_name with --device/--release."
-                )
+            if _check_exclusive(bsp_name, device, release, export_parser):
                 return 1
             if bsp_name:
                 bsp_mgr.export_bsp_config(bsp_name=bsp_name, output_file=output)
@@ -303,10 +305,7 @@ def main() -> int:
             features = getattr(args, 'features', None) or []
             bsp_name = getattr(args, 'bsp_name', None)
 
-            if bsp_name and (device or release):
-                logging.error(
-                    "Cannot mix positional bsp_name with --device/--release."
-                )
+            if _check_exclusive(bsp_name, device, release, shell_parser):
                 return 1
             if bsp_name:
                 bsp_mgr.shell_into_bsp(bsp_name=bsp_name, command=shell_command)

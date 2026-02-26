@@ -305,7 +305,7 @@ class V2Resolver:
             base_dir: Directory used to resolve relative include paths
                       (defaults to the current working directory)
         """
-        base = Path(base_dir).resolve() if base_dir else Path.cwd()
+        base = Path(base_dir).resolve() if base_dir and base_dir.strip() else Path.cwd()
 
         # Convert all include paths to absolute
         abs_includes: List[str] = []

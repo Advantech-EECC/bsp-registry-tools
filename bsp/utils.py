@@ -131,7 +131,8 @@ def get_registry_from_yaml_file(filename: Path) -> RegistryRoot:
         logging.error(
             f"Unsupported registry version '{version}' in {filename}. "
             f"This tool requires version '{SUPPORTED_REGISTRY_VERSION}'. "
-            f"See docs/migration-v1-to-v2.md for upgrade instructions."
+            f"See docs/migration-v1-to-v2.md in the bsp-registry-tools repository "
+            f"for upgrade instructions."
         )
         sys.exit(1)
 
