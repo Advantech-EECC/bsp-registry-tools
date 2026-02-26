@@ -55,8 +55,8 @@ class RegistryFetcher:
             self.logger.info("Cloning BSP registry from %s (branch: %s)", repo_url, branch)
             self._clone(repo_url, branch)
         elif update:
-            self.logger.info("Updating BSP registry from remote")
-            self._pull()
+            self.logger.info("Updating BSP registry from remote (branch: %s)", branch)
+            self._pull(branch)
         else:
             self.logger.info("Using cached BSP registry (no-update requested)")
 
@@ -88,12 +88,19 @@ class RegistryFetcher:
             self.logger.error("git clone failed (return code %d): %s", e.returncode, e.stderr)
             sys.exit(1)
 
-    def _pull(self) -> None:
-        """Run ``git pull`` inside the cache directory."""
-        cmd = ["git", "-C", str(self.cache_dir), "pull"]
-        self.logger.debug("Running: %s", " ".join(cmd))
-        try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
-        except subprocess.CalledProcessError as e:
-            self.logger.error("git pull failed (return code %d): %s", e.returncode, e.stderr)
-            sys.exit(1)
+    def _pull(self, branch: str) -> None:
+        """Fetch from remote, switch to *branch*, and pull latest changes."""
+        cmds = [
+            ["git", "-C", str(self.cache_dir), "fetch", "origin"],
+            ["git", "-C", str(self.cache_dir), "checkout", branch],
+            ["git", "-C", str(self.cache_dir), "pull", "origin", branch],
+        ]
+        for cmd in cmds:
+            self.logger.debug("Running: %s", " ".join(cmd))
+            try:
+                subprocess.run(cmd, check=True, capture_output=True, text=True)
+            except subprocess.CalledProcessError as e:
+                self.logger.error(
+                    "git %s failed (return code %d): %s", cmd[2], e.returncode, e.stderr
+                )
+                sys.exit(1)

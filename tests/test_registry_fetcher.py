@@ -99,9 +99,23 @@ class TestFetchRegistryPull:
             result = fetcher.fetch_registry(update=True)
 
         assert result == fetcher.cache_dir / REGISTRY_FILENAME
-        assert mock_run.call_count == 1
-        pull_cmd = mock_run.call_args[0][0]
-        assert "pull" in pull_cmd
+        # fetch + checkout + pull
+        assert mock_run.call_count == 3
+        cmds = [mock_run.call_args_list[i][0][0] for i in range(3)]
+        assert "fetch" in cmds[0]
+        assert "checkout" in cmds[1]
+        assert "pull" in cmds[2]
+
+    def test_pull_uses_requested_branch(self, tmp_dir):
+        fetcher = _make_fetcher(tmp_dir)
+        self._setup_cloned(fetcher)
+
+        with patch("subprocess.run", return_value=MagicMock(returncode=0)) as mock_run:
+            fetcher.fetch_registry(branch="development", update=True)
+
+        cmds = [mock_run.call_args_list[i][0][0] for i in range(3)]
+        assert "development" in cmds[1]   # checkout development
+        assert "development" in cmds[2]   # pull origin development
 
     def test_skips_pull_when_no_update(self, tmp_dir):
         fetcher = _make_fetcher(tmp_dir)
