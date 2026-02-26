@@ -275,7 +275,7 @@ class BspManager:
         if not checkout_only:
             if container_config.file and container_config.image:
                 build_docker(
-                    ".",
+                    str(self.config_path.parent),
                     container_config.file,
                     container_config.image,
                     container_config.args
@@ -334,7 +334,7 @@ class BspManager:
         if container_config.file and container_config.image:
             logging.info("Building Docker image for shell environment...")
             build_docker(
-                ".",
+                str(self.config_path.parent),
                 container_config.file,
                 container_config.image,
                 container_config.args

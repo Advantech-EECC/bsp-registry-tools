@@ -187,3 +187,93 @@ registry:
         assert bsp_obj.os is not None
         assert bsp_obj.os.name == "linux"
         assert bsp_obj.os.build_system == "yocto"
+
+    def test_build_bsp_uses_registry_dir_for_dockerfile(self, tmp_dir):
+        """build_docker must be called with the registry file's directory, not CWD."""
+        from unittest.mock import patch, MagicMock
+        from bsp.kas_manager import KasManager
+
+        # Create a Dockerfile next to the registry file in a subdirectory
+        registry_dir = tmp_dir / "remote_cache"
+        registry_dir.mkdir()
+        dockerfile = registry_dir / "Dockerfile.ubuntu"
+        dockerfile.write_text("FROM ubuntu:22.04\n")
+
+        registry_content = f"""
+specification:
+  version: "1.0"
+registry:
+  bsp:
+    - name: test-bsp
+      description: "Test BSP"
+      build:
+        path: build/test
+        environment:
+          container: "ubuntu-22.04"
+        configuration:
+          - test.yml
+containers:
+  - ubuntu-22.04:
+      image: "test/ubuntu-22.04:latest"
+      file: Dockerfile.ubuntu
+      args: []
+"""
+        registry_file = registry_dir / "bsp-registry.yml"
+        registry_file.write_text(registry_content)
+
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+
+        with patch("bsp.bsp_manager.build_docker") as mock_build_docker:
+            with patch.object(KasManager, "build_project"):
+                with patch.object(manager, "prepare_build_directory"):
+                    with patch.object(KasManager, "dump_config", return_value=None):
+                        manager.build_bsp("test-bsp")
+
+        # The first argument to build_docker must be the registry file's parent dir
+        called_dockerfile_dir = mock_build_docker.call_args[0][0]
+        assert called_dockerfile_dir == str(registry_dir)
+
+    def test_shell_into_bsp_uses_registry_dir_for_dockerfile(self, tmp_dir):
+        """shell_into_bsp must resolve Dockerfile relative to the registry file, not CWD."""
+        from unittest.mock import patch
+        from bsp.kas_manager import KasManager
+
+        registry_dir = tmp_dir / "remote_cache"
+        registry_dir.mkdir()
+        dockerfile = registry_dir / "Dockerfile.ubuntu"
+        dockerfile.write_text("FROM ubuntu:22.04\n")
+
+        registry_content = f"""
+specification:
+  version: "1.0"
+registry:
+  bsp:
+    - name: test-bsp
+      description: "Test BSP"
+      build:
+        path: build/test
+        environment:
+          container: "ubuntu-22.04"
+        configuration:
+          - test.yml
+containers:
+  - ubuntu-22.04:
+      image: "test/ubuntu-22.04:latest"
+      file: Dockerfile.ubuntu
+      args: []
+"""
+        registry_file = registry_dir / "bsp-registry.yml"
+        registry_file.write_text(registry_content)
+
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+
+        with patch("bsp.bsp_manager.build_docker") as mock_build_docker:
+            with patch.object(KasManager, "shell_session"):
+                with patch.object(manager, "prepare_build_directory"):
+                    with patch.object(KasManager, "dump_config", return_value=None):
+                        manager.shell_into_bsp("test-bsp")
+
+        called_dockerfile_dir = mock_build_docker.call_args[0][0]
+        assert called_dockerfile_dir == str(registry_dir)
