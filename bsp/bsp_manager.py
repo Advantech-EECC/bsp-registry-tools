@@ -235,6 +235,7 @@ class BspManager:
             sstate_dir=sstate,
             use_container=use_container,
             container_image=container_config.image if use_container else None,
+            search_paths=[str(self.config_path.parent)],
             env_manager=self.env_manager
         )
 
@@ -395,6 +396,7 @@ class BspManager:
                 download_dir=downloads,
                 sstate_dir=sstate,
                 use_container=False,  # Don't need container for export
+                search_paths=[str(self.config_path.parent)],
                 env_manager=self.env_manager
             )
 

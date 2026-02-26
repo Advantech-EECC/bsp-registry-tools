@@ -277,3 +277,37 @@ containers:
 
         called_dockerfile_dir = mock_build_docker.call_args[0][0]
         assert called_dockerfile_dir == str(registry_dir)
+
+    def test_kas_manager_gets_registry_dir_as_search_path(self, tmp_dir):
+        """KasManager must include the registry file's directory in its search paths."""
+        registry_dir = tmp_dir / "remote_cache"
+        registry_dir.mkdir()
+
+        registry_content = """
+specification:
+  version: "1.0"
+registry:
+  bsp:
+    - name: test-bsp
+      description: "Test BSP"
+      build:
+        path: build/test
+        environment:
+          container: "ubuntu-22.04"
+        configuration:
+          - test.yml
+containers:
+  - ubuntu-22.04:
+      image: "test/ubuntu-22.04:latest"
+      file: Dockerfile.ubuntu
+      args: []
+"""
+        registry_file = registry_dir / "bsp-registry.yml"
+        registry_file.write_text(registry_content)
+
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        bsp_obj = manager.get_bsp_by_name("test-bsp")
+
+        kas_mgr = manager._get_kas_manager_for_bsp(bsp_obj, use_container=False)
+        assert str(registry_dir) in kas_mgr.search_paths
