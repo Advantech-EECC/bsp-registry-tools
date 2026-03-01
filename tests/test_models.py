@@ -292,5 +292,5 @@ class TestReleaseEnvironmentField:
         assert r.environment is None
 
     def test_release_with_environment_name(self):
-        r = Release(slug="isar-kirkstone", description="Isar", environment="isar-env")
+        r = Release(slug="isar-v0.11", description="Isar", environment="isar-env")
         assert r.environment == "isar-env"

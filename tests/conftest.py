@@ -230,11 +230,11 @@ registry:
       yocto_version: "5.0"
       includes:
         - kas/scarthgap.yml
-    - slug: isar-kirkstone
-      description: "Isar Kirkstone"
+    - slug: isar-v0.11
+      description: "Isar v0.11"
       environment: isar-env
       includes:
-        - kas/isar/kirkstone.yml
+        - kas/isar/v0.11.yml
   features: []
   bsp:
     - name: qemu-scarthgap
@@ -242,10 +242,10 @@ registry:
       device: qemu-arm64
       release: scarthgap
       features: []
-    - name: isar-kirkstone-build
-      description: "Isar Kirkstone build"
+    - name: isar-v0.11-build
+      description: "Isar v0.11 build"
       device: isar-board
-      release: isar-kirkstone
+      release: isar-v0.11
       features: []
 """
 

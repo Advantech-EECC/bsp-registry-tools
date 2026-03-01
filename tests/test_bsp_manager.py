@@ -441,7 +441,7 @@ class TestNamedEnvironmentsInResolver:
         """When release names 'isar-env', that environment's container is used."""
         manager = BspManager(config_path=str(registry_with_named_env_file))
         manager.initialize()
-        resolved = manager.resolver.resolve("isar-board", "isar-kirkstone")
+        resolved = manager.resolver.resolve("isar-board", "isar-v0.11")
         assert resolved.container is not None
         assert resolved.container.image == "test/debian-isar:latest"
 
@@ -459,10 +459,10 @@ class TestNamedEnvironmentsInResolver:
     def test_isar_env_variables_in_resolved_env(
         self, registry_with_named_env_file
     ):
-        """isar-env variables appear for the isar-kirkstone release."""
+        """isar-env variables appear for the isar-v0.11 release."""
         manager = BspManager(config_path=str(registry_with_named_env_file))
         manager.initialize()
-        resolved = manager.resolver.resolve("isar-board", "isar-kirkstone")
+        resolved = manager.resolver.resolve("isar-board", "isar-v0.11")
         dl_var = next((e for e in resolved.env if e.name == "DL_DIR"), None)
         assert dl_var is not None
         assert dl_var.value == "/tmp/isar-downloads"

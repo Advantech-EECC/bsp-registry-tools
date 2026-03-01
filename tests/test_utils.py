@@ -244,7 +244,7 @@ class TestNamedEnvironmentParsing:
     def test_release_with_environment_name_parsed(self, registry_with_named_env_file):
         result = get_registry_from_yaml_file(registry_with_named_env_file)
         isar_rel = next(
-            r for r in result.registry.releases if r.slug == "isar-kirkstone"
+            r for r in result.registry.releases if r.slug == "isar-v0.11"
         )
         assert isar_rel.environment == "isar-env"
 

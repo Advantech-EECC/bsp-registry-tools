@@ -206,11 +206,11 @@ registry:
           includes:
             - kas/advantech/scarthgap-vendor.yml
 
-    - slug: isar-kirkstone
-      description: "Isar Kirkstone"
+    - slug: isar-v0.11
+      description: "Isar v0.11"
       environment: isar-build        # use the 'isar-build' named environment
       includes:
-        - kas/isar/kirkstone.yml
+        - kas/isar/v0.11.yml
 ```
 
 The optional `environment` field names an entry from the top-level
@@ -383,11 +383,11 @@ registry:
       includes:
         - kas/styhead.yml
 
-    - slug: isar-kirkstone
-      description: "Isar Kirkstone"
+    - slug: isar-v0.11
+      description: "Isar v0.11"
       environment: isar-build          # use the 'isar-build' named environment
       includes:
-        - kas/isar/kirkstone.yml
+        - kas/isar/v0.11.yml
 
   features:
     - slug: ota
