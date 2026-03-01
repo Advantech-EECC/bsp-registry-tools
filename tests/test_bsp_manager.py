@@ -614,3 +614,38 @@ class TestCopyFiles:
         resolved = manager.resolver.resolve("test-device", "test-release")
         # Should not raise
         manager._copy_files(resolved)
+
+
+# =============================================================================
+# Tests for runtime_args support in KasManager creation
+# =============================================================================
+
+class TestRuntimeArgs:
+    def test_runtime_args_parsed_from_container(self, registry_with_runtime_args_file):
+        """Container definition with runtime_args is parsed correctly."""
+        manager = BspManager(config_path=str(registry_with_runtime_args_file))
+        manager.initialize()
+        container = manager.containers["isar-qemu-container"]
+        assert container.runtime_args == "-p 2222:2222 --device=/dev/net/tun --cap-add=NET_ADMIN"
+
+    def test_runtime_args_propagated_to_kas_manager(self, registry_with_runtime_args_file):
+        """runtime_args from container is forwarded to KasManager as KAS_CONTAINER_ARGS."""
+        manager = BspManager(config_path=str(registry_with_runtime_args_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("isar-qemu", "isar-v0.11")
+        kas_mgr = manager._get_kas_manager_for_resolved(resolved, use_container=True)
+        env = kas_mgr._get_environment_with_container_vars()
+        assert env.get("KAS_CONTAINER_ARGS") == "-p 2222:2222 --device=/dev/net/tun --cap-add=NET_ADMIN"
+        manager._cleanup_temp_kas_file()
+
+    def test_runtime_args_absent_for_container_without_them(
+        self, registry_with_runtime_args_file
+    ):
+        """KAS_CONTAINER_ARGS is absent when container has no runtime_args."""
+        manager = BspManager(config_path=str(registry_with_runtime_args_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("plain-device", "isar-v0.11")
+        kas_mgr = manager._get_kas_manager_for_resolved(resolved, use_container=True)
+        env = kas_mgr._get_environment_with_container_vars()
+        assert "KAS_CONTAINER_ARGS" not in env
+        manager._cleanup_temp_kas_file()

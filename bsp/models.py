@@ -59,10 +59,15 @@ class Docker:
         image: Docker image name/tag for the build environment
         file: Path to Dockerfile for building custom images
         args: List of Docker build arguments (name=value pairs)
+        runtime_args: Extra arguments appended to the container engine
+                      ``run`` command (e.g. ``-p 2222:2222
+                      --device=/dev/net/tun --cap-add=NET_ADMIN``).
+                      Passed to kas-container via ``KAS_CONTAINER_ARGS``.
     """
     image: Optional[str]
     file: Optional[str]
     args: List[DockerArg] = field(default_factory=empty_list)
+    runtime_args: Optional[str] = None
 
 
 @dataclass

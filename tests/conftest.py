@@ -284,6 +284,58 @@ registry:
       features: []
 """
 
+REGISTRY_WITH_RUNTIME_ARGS_YAML = """
+specification:
+  version: "2.0"
+containers:
+  isar-qemu-container:
+    image: "ghcr.io/ilbers/isar:latest"
+    file: null
+    args: []
+    runtime_args: "-p 2222:2222 --device=/dev/net/tun --cap-add=NET_ADMIN"
+  plain-container:
+    image: "test/plain:latest"
+    file: null
+    args: []
+registry:
+  devices:
+    - slug: isar-qemu
+      description: "QEMU Isar"
+      vendor: qemu
+      soc_vendor: arm
+      build:
+        container: "isar-qemu-container"
+        path: build/isar-qemu
+        includes:
+          - kas/isar/qemu.yml
+    - slug: plain-device
+      description: "Plain device"
+      vendor: test
+      soc_vendor: arm
+      build:
+        container: "plain-container"
+        path: build/plain
+        includes:
+          - kas/plain.yml
+  releases:
+    - slug: isar-v0.11
+      description: "Isar v0.11"
+      includes:
+        - kas/isar/v0.11.yml
+  features: []
+  bsp:
+    - name: isar-qemu-v0.11
+      description: "Isar QEMU v0.11"
+      device: isar-qemu
+      release: isar-v0.11
+      features: []
+    - name: plain-build
+      description: "Plain build"
+      device: plain-device
+      release: isar-v0.11
+      features: []
+"""
+
 
 # =============================================================================
 # Fixtures
@@ -333,6 +385,14 @@ def registry_with_copy_file(tmp_dir):
     """Create a registry YAML file with copy entries in device build config."""
     registry_path = tmp_dir / "bsp-registry.yml"
     registry_path.write_text(REGISTRY_WITH_COPY_YAML)
+    return registry_path
+
+
+@pytest.fixture
+def registry_with_runtime_args_file(tmp_dir):
+    """Create a registry YAML file with runtime_args on a container definition."""
+    registry_path = tmp_dir / "bsp-registry.yml"
+    registry_path.write_text(REGISTRY_WITH_RUNTIME_ARGS_YAML)
     return registry_path
 
 

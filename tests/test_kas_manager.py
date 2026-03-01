@@ -155,6 +155,38 @@ class TestKasManager:
         assert env.get("KAS_CONTAINER_ENGINE") == "docker"
         assert env.get("KAS_CONTAINER_IMAGE") == "custom-image:latest"
 
+    def test_container_runtime_args_set_kas_container_args(self, kas_config_file):
+        """KAS_CONTAINER_ARGS is set from container_runtime_args when using container."""
+        manager = KasManager(
+            kas_files=[str(kas_config_file)],
+            build_dir=str(kas_config_file.parent / "build"),
+            use_container=True,
+            container_runtime_args="-p 2222:2222 --device=/dev/net/tun"
+        )
+        env = manager._get_environment_with_container_vars()
+        assert env.get("KAS_CONTAINER_ARGS") == "-p 2222:2222 --device=/dev/net/tun"
+
+    def test_container_runtime_args_not_set_without_container(self, kas_config_file):
+        """KAS_CONTAINER_ARGS is NOT set when use_container is False."""
+        manager = KasManager(
+            kas_files=[str(kas_config_file)],
+            build_dir=str(kas_config_file.parent / "build"),
+            use_container=False,
+            container_runtime_args="-p 2222:2222"
+        )
+        env = manager._get_environment_with_container_vars()
+        assert "KAS_CONTAINER_ARGS" not in env
+
+    def test_container_runtime_args_none_not_set(self, kas_config_file):
+        """KAS_CONTAINER_ARGS is absent when container_runtime_args is None."""
+        manager = KasManager(
+            kas_files=[str(kas_config_file)],
+            build_dir=str(kas_config_file.parent / "build"),
+            use_container=True,
+        )
+        env = manager._get_environment_with_container_vars()
+        assert "KAS_CONTAINER_ARGS" not in env
+
     def test_check_kas_available_when_installed(self, kas_config_file):
         manager = KasManager(
             kas_files=[str(kas_config_file)],

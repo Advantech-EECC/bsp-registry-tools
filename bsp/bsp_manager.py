@@ -387,6 +387,11 @@ class BspManager:
             if resolved.container and use_container
             else None
         )
+        container_runtime_args = (
+            resolved.container.runtime_args
+            if resolved.container and use_container
+            else None
+        )
 
         kas_mgr = KasManager(
             kas_files,
@@ -395,6 +400,7 @@ class BspManager:
             sstate_dir=sstate,
             use_container=use_container,
             container_image=container_image,
+            container_runtime_args=container_runtime_args,
             env_manager=env_mgr,
         )
         return kas_mgr

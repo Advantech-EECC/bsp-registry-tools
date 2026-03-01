@@ -98,7 +98,24 @@ containers:
         value: "debian-bookworm"
       - name: "KAS_VERSION"
         value: "5.1"
+
+  isar-qemu:
+    image: "ghcr.io/ilbers/isar:latest"
+    file: null
+    args: []
+    # Optional: extra arguments appended to the container engine `run` command.
+    # Passed to kas-container via the KAS_CONTAINER_ARGS environment variable.
+    runtime_args: "-p 2222:2222 --device=/dev/net/tun --cap-add=NET_ADMIN"
 ```
+
+### `containers[*]` fields
+
+| Field           | Type          | Description                                                    |
+|-----------------|---------------|----------------------------------------------------------------|
+| `image`         | string (opt.) | Docker image to use at runtime                                 |
+| `file`          | string (opt.) | Path to Dockerfile for `docker build`                          |
+| `args`          | list          | Docker build arguments (`name`/`value` pairs)                  |
+| `runtime_args`  | string (opt.) | Extra flags appended to the container engine `run` invocation. Forwarded to `kas-container` via `KAS_CONTAINER_ARGS`. Useful for port-forwarding, device access (`--device`), or capability grants (`--cap-add`). |
 
 > The legacy **list** format (`- debian-bookworm: {…}`) is still accepted for
 > backward compatibility in the containers section.

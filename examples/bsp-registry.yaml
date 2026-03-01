@@ -50,6 +50,8 @@ containers:
     image: "ghcr.io/ilbers/isar:latest"
     file: null
     args: []
+    # SSH port forwarding and TUN device for networking in QEMU
+    runtime_args: "-p 2222:2222 --device=/dev/net/tun --cap-add=NET_ADMIN"
 
 registry:
 

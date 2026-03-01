@@ -281,3 +281,24 @@ class TestDeviceBuildCopy:
         result = get_registry_from_yaml_file(registry_file)
         device = result.registry.devices[0]
         assert device.build.copy == []
+
+
+# =============================================================================
+# Tests for runtime_args in container definitions
+# =============================================================================
+
+class TestContainerRuntimeArgs:
+    def test_container_with_runtime_args_parsed(self, registry_with_runtime_args_file):
+        result = get_registry_from_yaml_file(registry_with_runtime_args_file)
+        container = result.containers["isar-qemu-container"]
+        assert container.runtime_args == "-p 2222:2222 --device=/dev/net/tun --cap-add=NET_ADMIN"
+
+    def test_container_without_runtime_args_is_none(self, registry_with_runtime_args_file):
+        result = get_registry_from_yaml_file(registry_with_runtime_args_file)
+        container = result.containers["plain-container"]
+        assert container.runtime_args is None
+
+    def test_container_without_runtime_args_defaults_none(self, registry_file):
+        result = get_registry_from_yaml_file(registry_file)
+        container = result.containers["ubuntu-22.04"]
+        assert container.runtime_args is None

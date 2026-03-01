@@ -32,6 +32,7 @@ class KasManager:
     def __init__(self, kas_files: List[str], build_dir: str = "build", use_container: bool = False,
                  download_dir: str = None, sstate_dir: str = None,
                  container_engine: str = None, container_image: str = None,
+                 container_runtime_args: str = None,
                  search_paths: List[str] = None, env_manager: EnvironmentManager = None):
         """
         Initialize KAS manager with configuration.
@@ -44,6 +45,9 @@ class KasManager:
             sstate_dir: Shared state cache directory for build acceleration
             container_engine: Container runtime (docker, podman)
             container_image: Custom container image for kas-container
+            container_runtime_args: Extra arguments appended to the container
+                                    engine ``run`` command.  Forwarded to
+                                    kas-container via ``KAS_CONTAINER_ARGS``.
             search_paths: Additional paths to search for configuration files
             env_manager: Environment configuration manager
 
@@ -59,6 +63,7 @@ class KasManager:
         self.use_container = use_container
         self.container_engine = container_engine
         self.container_image = container_image
+        self.container_runtime_args = container_runtime_args
         self.search_paths = search_paths or []
         self.download_dir = download_dir
         self.sstate_dir = sstate_dir
@@ -119,6 +124,8 @@ class KasManager:
                 env['KAS_CONTAINER_ENGINE'] = self.container_engine
             if self.container_image:
                 env['KAS_CONTAINER_IMAGE'] = self.container_image
+            if self.container_runtime_args:
+                env['KAS_CONTAINER_ARGS'] = self.container_runtime_args
 
         # Apply environment manager configuration (overrides any previous settings)
         env = self.env_manager.setup_environment(env)
