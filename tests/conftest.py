@@ -178,6 +178,77 @@ registry:
         - ota
 """
 
+REGISTRY_WITH_NAMED_ENVIRONMENTS_YAML = """
+specification:
+  version: "2.0"
+
+environments:
+  default:
+    container: "debian-bookworm"
+    variables:
+      - name: "DL_DIR"
+        value: "/tmp/downloads"
+      - name: "SSTATE_DIR"
+        value: "/tmp/sstate"
+  isar-env:
+    container: "debian-bookworm-isar"
+    variables:
+      - name: "DL_DIR"
+        value: "/tmp/isar-downloads"
+
+containers:
+  debian-bookworm:
+    image: "test/debian:latest"
+    file: null
+    args: []
+  debian-bookworm-isar:
+    image: "test/debian-isar:latest"
+    file: null
+    args: []
+
+registry:
+  devices:
+    - slug: qemu-arm64
+      description: "QEMU ARM64"
+      vendor: qemu
+      soc_vendor: arm
+      build:
+        path: build/qemuarm64
+        includes:
+          - kas/qemuarm64.yml
+    - slug: isar-board
+      description: "Isar Board"
+      vendor: acme
+      soc_vendor: arm
+      build:
+        path: build/isar-board
+        includes:
+          - kas/isar/board.yml
+  releases:
+    - slug: scarthgap
+      description: "Yocto 5.0 LTS"
+      yocto_version: "5.0"
+      includes:
+        - kas/scarthgap.yml
+    - slug: isar-kirkstone
+      description: "Isar Kirkstone"
+      environment: isar-env
+      includes:
+        - kas/isar/kirkstone.yml
+  features: []
+  bsp:
+    - name: qemu-scarthgap
+      description: "QEMU Scarthgap"
+      device: qemu-arm64
+      release: scarthgap
+      features: []
+    - name: isar-kirkstone-build
+      description: "Isar Kirkstone build"
+      device: isar-board
+      release: isar-kirkstone
+      features: []
+"""
+
 
 # =============================================================================
 # Fixtures
@@ -211,6 +282,14 @@ def registry_with_features_file(tmp_dir):
     """Create a registry YAML file with features and compatibility rules."""
     registry_path = tmp_dir / "bsp-registry.yml"
     registry_path.write_text(REGISTRY_WITH_FEATURES_YAML)
+    return registry_path
+
+
+@pytest.fixture
+def registry_with_named_env_file(tmp_dir):
+    """Create a registry YAML file with named environments."""
+    registry_path = tmp_dir / "bsp-registry.yml"
+    registry_path.write_text(REGISTRY_WITH_NAMED_ENVIRONMENTS_YAML)
     return registry_path
 
 

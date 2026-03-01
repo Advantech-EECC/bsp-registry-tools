@@ -209,3 +209,56 @@ class TestConvertContainersListToDict:
     def test_empty_list(self):
         result = convert_containers_list_to_dict([])
         assert result == {}
+
+
+# =============================================================================
+# Tests for named environments in registry parsing
+# =============================================================================
+
+class TestNamedEnvironmentParsing:
+    def test_registry_with_named_environments_parsed(
+        self, registry_with_named_env_file
+    ):
+        result = get_registry_from_yaml_file(registry_with_named_env_file)
+        assert result.environments is not None
+        assert "default" in result.environments
+        assert "isar-env" in result.environments
+
+    def test_default_env_has_container(self, registry_with_named_env_file):
+        result = get_registry_from_yaml_file(registry_with_named_env_file)
+        default_env = result.environments["default"]
+        assert default_env.container == "debian-bookworm"
+
+    def test_default_env_has_variables(self, registry_with_named_env_file):
+        result = get_registry_from_yaml_file(registry_with_named_env_file)
+        default_env = result.environments["default"]
+        var_names = [v.name for v in default_env.variables]
+        assert "DL_DIR" in var_names
+        assert "SSTATE_DIR" in var_names
+
+    def test_named_env_has_different_container(self, registry_with_named_env_file):
+        result = get_registry_from_yaml_file(registry_with_named_env_file)
+        isar_env = result.environments["isar-env"]
+        assert isar_env.container == "debian-bookworm-isar"
+
+    def test_release_with_environment_name_parsed(self, registry_with_named_env_file):
+        result = get_registry_from_yaml_file(registry_with_named_env_file)
+        isar_rel = next(
+            r for r in result.registry.releases if r.slug == "isar-kirkstone"
+        )
+        assert isar_rel.environment == "isar-env"
+
+    def test_release_without_environment_name_is_none(
+        self, registry_with_named_env_file
+    ):
+        result = get_registry_from_yaml_file(registry_with_named_env_file)
+        scarthgap = next(
+            r for r in result.registry.releases if r.slug == "scarthgap"
+        )
+        assert scarthgap.environment is None
+
+    def test_registry_without_environments_key(self, registry_file):
+        """Registries without an environments section should still parse fine."""
+        result = get_registry_from_yaml_file(registry_file)
+        # Default is an empty dict (not None)
+        assert result.environments == {}

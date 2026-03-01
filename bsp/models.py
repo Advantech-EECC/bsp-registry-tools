@@ -81,18 +81,44 @@ class Specification:
 # =============================================================================
 
 @dataclass
+class NamedEnvironment:
+    """
+    A named build environment bundling a container reference and environment
+    variables.
+
+    Named environments allow different builds (especially different releases)
+    to use distinct container images and variable sets without repeating the
+    configuration on every device or release entry.
+
+    A special name ``"default"`` is used as the fallback environment for any
+    release that does not explicitly specify one.
+
+    Attributes:
+        container: Optional container name (references the top-level
+                   ``containers`` dict).  When ``None`` the device's own
+                   ``build.container`` must be set.
+        variables: Environment variables provided by this environment
+                   (merged on top of the root-level ``environment`` list).
+    """
+    container: Optional[str] = None
+    variables: List[EnvironmentVariable] = field(default_factory=empty_list)
+
+
+@dataclass
 class DeviceBuild:
     """
     Build configuration for a hardware device.
 
     Attributes:
-        container: Name of the container to use (references containers section)
         path: Build output directory for Yocto artifacts
+        container: Optional container name override (references containers
+                   section).  When ``None`` the active named environment's
+                   container is used instead.
         includes: List of device-specific KAS configuration files
         local_conf: List of local.conf lines to append for this device
     """
-    container: str
     path: str
+    container: Optional[str] = None
     includes: List[str] = field(default_factory=empty_list)
     local_conf: List[str] = field(default_factory=empty_list)
 
@@ -143,6 +169,11 @@ class Release:
         yocto_version: Yocto Project version string (e.g., '5.0')
         isar_version: Isar version string (optional)
         vendor_includes: Vendor-specific KAS includes for this release
+        environment: Optional name of the named environment to use for this
+                     release (references ``RegistryRoot.environments``).
+                     When omitted the ``"default"`` named environment is used
+                     if one is defined, otherwise the global environment list
+                     and device container apply.
     """
     slug: str
     description: str
@@ -150,6 +181,7 @@ class Release:
     yocto_version: Optional[str] = None
     isar_version: Optional[str] = None
     vendor_includes: List[VendorIncludes] = field(default_factory=empty_list)
+    environment: Optional[str] = None
 
 
 @dataclass
@@ -236,8 +268,13 @@ class RegistryRoot:
         registry: Main registry data containing devices, releases, features, and presets
         containers: Dictionary of Docker container definitions keyed by name
         environment: Global environment variables for all builds (supports $ENV{} expansion)
+        environments: Optional dictionary of named environments.  Each entry
+                      bundles a container reference and environment variables.
+                      The special name ``"default"`` is applied to any release
+                      that does not explicitly name an environment.
     """
     specification: Specification
     registry: Registry
     containers: Optional[Dict[str, Docker]] = field(default_factory=empty_dict)
     environment: Optional[List[EnvironmentVariable]] = field(default_factory=empty_list)
+    environments: Optional[Dict[str, NamedEnvironment]] = field(default_factory=empty_dict)

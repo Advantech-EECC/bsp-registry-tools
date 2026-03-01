@@ -16,6 +16,7 @@ from .models import (
     Docker,
     EnvironmentVariable,
     Feature,
+    NamedEnvironment,
     Release,
     RegistryRoot,
     empty_list,
@@ -75,6 +76,46 @@ class V2Resolver:
         self.model = model
         self.containers = containers
         self.logger = logging.getLogger(self.__class__.__name__)
+
+    # ------------------------------------------------------------------
+    # Named environment helper
+    # ------------------------------------------------------------------
+
+    def get_named_environment(self, release: Release) -> Optional[NamedEnvironment]:
+        """
+        Return the NamedEnvironment that should be applied for *release*.
+
+        Resolution order:
+        1. If ``release.environment`` is set, look it up in
+           ``model.environments``; exit with an error if not found.
+        2. If no name is specified on the release but a ``"default"``
+           environment exists, return that.
+        3. Otherwise return ``None`` (no named environment applies).
+
+        Args:
+            release: The release being resolved.
+
+        Returns:
+            Matching NamedEnvironment or None.
+
+        Raises:
+            SystemExit: If an explicitly-named environment is not found.
+        """
+        envs = self.model.environments or {}
+
+        if release.environment:
+            if release.environment in envs:
+                return envs[release.environment]
+            self.logger.error(
+                f"Named environment '{release.environment}' referenced by release "
+                f"'{release.slug}' not found in registry environments"
+            )
+            available = ", ".join(envs.keys()) or "(none)"
+            self.logger.info(f"Available environments: {available}")
+            sys.exit(1)
+
+        # Fall back to "default" named environment if present
+        return envs.get("default")
 
     # ------------------------------------------------------------------
     # Lookup helpers
@@ -210,16 +251,28 @@ class V2Resolver:
             if not self.check_feature_compatibility(feature, device):
                 sys.exit(1)
 
-        # Resolve container configuration
+        # Resolve named environment for the release
+        named_env: Optional[NamedEnvironment] = self.get_named_environment(release)
+
+        # Resolve container configuration.
+        # Priority: device.build.container > named_env.container > None
         container: Optional[Docker] = None
-        container_name = device.build.container
+        named_env_name = release.environment or ("default" if "default" in (self.model.environments or {}) else None)
+        container_name = device.build.container or (
+            named_env.container if named_env else None
+        )
         if container_name:
             if container_name in self.containers:
                 container = self.containers[container_name]
             else:
+                source = (
+                    f"named environment '{named_env_name}'"
+                    if not device.build.container
+                    else f"device '{device_slug}'"
+                )
                 self.logger.error(
-                    f"Container '{container_name}' referenced by device '{device_slug}' "
-                    f"not found in registry containers"
+                    f"Container '{container_name}' not found in registry containers "
+                    f"(referenced by {source})"
                 )
                 sys.exit(1)
 
@@ -236,8 +289,11 @@ class V2Resolver:
         for feature in features:
             local_conf.extend(feature.local_conf)
 
-        # Build merged env
+        # Build merged env: named environment variables first (base),
+        # then feature-level variables (overrides).
         env: List[EnvironmentVariable] = []
+        if named_env:
+            env.extend(named_env.variables)
         for feature in features:
             env.extend(feature.env)
 

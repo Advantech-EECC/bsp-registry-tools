@@ -48,6 +48,7 @@ from .models import (
     DockerArg,
     Docker,
     Specification,
+    NamedEnvironment,
     DeviceBuild,
     Device,
     VendorIncludes,
@@ -93,6 +94,7 @@ __all__ = [
     # v2.0 data classes
     "DeviceBuild",
     "Device",
+    "NamedEnvironment",
     "VendorIncludes",
     "Release",
     "FeatureCompatibility",

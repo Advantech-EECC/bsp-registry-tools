@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from .environment import EnvironmentManager
 from .kas_manager import KasManager
-from .models import BspPreset, Docker
+from .models import BspPreset, Docker, EnvironmentVariable
 from .path_resolver import resolver
 from .resolver import ResolvedConfig, V2Resolver
 from .utils import get_registry_from_yaml_file, build_docker
@@ -169,8 +169,9 @@ class BspManager:
             isar = f" [Isar {release.isar_version}]" if release.isar_version else ""
             vendors = [vi.vendor for vi in release.vendor_includes]
             vendor_str = f", vendor overrides: {', '.join(vendors)}" if vendors else ""
+            env_str = f", environment: {release.environment}" if release.environment else ""
             print(
-                f"- {release.slug}: {release.description}{yocto}{isar}{vendor_str}"
+                f"- {release.slug}: {release.description}{yocto}{isar}{vendor_str}{env_str}"
             )
 
     def list_features(self) -> None:
@@ -271,6 +272,10 @@ class BspManager:
         KAS YAML file is generated to carry those into the build.  The
         caller is responsible for deleting the temp file when done.
 
+        Environment variables are merged in this order (later entries win):
+        1. Root-level ``environment`` list (global defaults)
+        2. Named environment variables from ``resolved.env``
+
         Args:
             resolved: Resolved device+release+features build config
             use_container: Whether to use containerized KAS
@@ -278,11 +283,21 @@ class BspManager:
         Returns:
             Configured KasManager instance
         """
-        downloads = None
-        sstate = None
-        if self.env_manager:
-            downloads = self.env_manager.get_value("DL_DIR")
-            sstate = self.env_manager.get_value("SSTATE_DIR")
+        # Build per-build EnvironmentManager: root vars merged with
+        # named-env / feature vars from the resolved config.
+        root_vars: List[EnvironmentVariable] = (
+            list(self.model.environment) if self.model.environment else []
+        )
+        # resolved.env contains named-env vars first, then feature vars.
+        # Merge by appending; later keys win in EnvironmentManager.
+        merged_vars = root_vars + list(resolved.env)
+        # Always create a fresh EnvironmentManager from merged vars so that
+        # named-env and feature variables are applied for this specific build.
+        # Fall back to the global env_manager only when no vars exist at all.
+        env_mgr = EnvironmentManager(merged_vars) if merged_vars else self.env_manager
+
+        downloads = env_mgr.get_value("DL_DIR") if env_mgr else None
+        sstate = env_mgr.get_value("SSTATE_DIR") if env_mgr else None
 
         if downloads:
             resolver.ensure_directory(downloads)
@@ -329,7 +344,7 @@ class BspManager:
             sstate_dir=sstate,
             use_container=use_container,
             container_image=container_image,
-            env_manager=self.env_manager,
+            env_manager=env_mgr,
         )
         return kas_mgr
 

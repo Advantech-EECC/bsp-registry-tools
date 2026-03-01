@@ -7,6 +7,7 @@ from bsp import (
     DockerArg,
     Docker,
     Specification,
+    NamedEnvironment,
     DeviceBuild,
     Device,
     VendorIncludes,
@@ -87,6 +88,13 @@ class TestSharedDataClasses:
 
 class TestV2DataClasses:
     def test_device_build_defaults(self):
+        db = DeviceBuild(path="build/test")
+        assert db.container is None
+        assert db.path == "build/test"
+        assert db.includes == []
+        assert db.local_conf == []
+
+    def test_device_build_with_explicit_container(self):
         db = DeviceBuild(container="ubuntu-22.04", path="build/test")
         assert db.container == "ubuntu-22.04"
         assert db.path == "build/test"
@@ -104,7 +112,7 @@ class TestV2DataClasses:
         assert db.local_conf == ["MACHINE = 'myboard'"]
 
     def test_device_minimal(self):
-        db = DeviceBuild(container="c", path="p")
+        db = DeviceBuild(path="build/test-device")
         d = Device(
             slug="my-device",
             description="My Device",
@@ -118,7 +126,7 @@ class TestV2DataClasses:
         assert d.soc_family is None
 
     def test_device_with_soc_family(self):
-        db = DeviceBuild(container="c", path="p")
+        db = DeviceBuild(path="build/test-device")
         d = Device(
             slug="imx8-board",
             description="i.MX8 Board",
@@ -227,3 +235,62 @@ class TestV2DataClasses:
         assert root.specification.version == "2.0"
         assert root.containers == {}
         assert root.environment == []
+        assert root.environments == {}
+
+    def test_registry_root_with_named_environments(self):
+        spec = Specification(version="2.0")
+        reg = Registry()
+        named_env = NamedEnvironment(
+            container="debian-bookworm",
+            variables=[EnvironmentVariable(name="DL_DIR", value="/tmp/dl")],
+        )
+        root = RegistryRoot(
+            specification=spec,
+            registry=reg,
+            environments={"default": named_env},
+        )
+        assert "default" in root.environments
+        assert root.environments["default"].container == "debian-bookworm"
+        assert len(root.environments["default"].variables) == 1
+
+
+# =============================================================================
+# Tests for NamedEnvironment
+# =============================================================================
+
+class TestNamedEnvironment:
+    def test_named_environment_defaults(self):
+        env = NamedEnvironment()
+        assert env.container is None
+        assert env.variables == []
+
+    def test_named_environment_with_container(self):
+        env = NamedEnvironment(container="debian-bookworm")
+        assert env.container == "debian-bookworm"
+
+    def test_named_environment_with_variables(self):
+        var = EnvironmentVariable(name="DL_DIR", value="/tmp/dl")
+        env = NamedEnvironment(container="debian-bookworm", variables=[var])
+        assert len(env.variables) == 1
+        assert env.variables[0].name == "DL_DIR"
+
+    def test_named_environment_no_container(self):
+        """Named environment without a container is valid (device may provide one)."""
+        var = EnvironmentVariable(name="DL_DIR", value="/tmp/dl")
+        env = NamedEnvironment(variables=[var])
+        assert env.container is None
+        assert len(env.variables) == 1
+
+
+# =============================================================================
+# Tests for Release.environment field
+# =============================================================================
+
+class TestReleaseEnvironmentField:
+    def test_release_environment_default_is_none(self):
+        r = Release(slug="scarthgap", description="Yocto 5.0")
+        assert r.environment is None
+
+    def test_release_with_environment_name(self):
+        r = Release(slug="isar-kirkstone", description="Isar", environment="isar-env")
+        assert r.environment == "isar-env"

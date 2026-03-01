@@ -418,3 +418,133 @@ containers:
         kas_mgr = manager._get_kas_manager_for_bsp(bsp_obj, use_container=False)
         assert str(registry_dir) in kas_mgr.search_paths
         assert manager.model is not None
+
+
+# =============================================================================
+# Tests for named environments in resolver
+# =============================================================================
+
+class TestNamedEnvironmentsInResolver:
+    def test_default_env_container_used_when_device_has_no_container(
+        self, registry_with_named_env_file
+    ):
+        """When device has no build.container, the default named env's container is used."""
+        manager = BspManager(config_path=str(registry_with_named_env_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("qemu-arm64", "scarthgap")
+        assert resolved.container is not None
+        assert resolved.container.image == "test/debian:latest"
+
+    def test_release_specific_env_container_used(
+        self, registry_with_named_env_file
+    ):
+        """When release names 'isar-env', that environment's container is used."""
+        manager = BspManager(config_path=str(registry_with_named_env_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("isar-board", "isar-kirkstone")
+        assert resolved.container is not None
+        assert resolved.container.image == "test/debian-isar:latest"
+
+    def test_named_env_variables_in_resolved_env(
+        self, registry_with_named_env_file
+    ):
+        """Named environment variables appear in ResolvedConfig.env."""
+        manager = BspManager(config_path=str(registry_with_named_env_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("qemu-arm64", "scarthgap")
+        env_names = [e.name for e in resolved.env]
+        assert "DL_DIR" in env_names
+        assert "SSTATE_DIR" in env_names
+
+    def test_isar_env_variables_in_resolved_env(
+        self, registry_with_named_env_file
+    ):
+        """isar-env variables appear for the isar-kirkstone release."""
+        manager = BspManager(config_path=str(registry_with_named_env_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("isar-board", "isar-kirkstone")
+        dl_var = next((e for e in resolved.env if e.name == "DL_DIR"), None)
+        assert dl_var is not None
+        assert dl_var.value == "/tmp/isar-downloads"
+
+    def test_device_container_overrides_named_env_container(
+        self, tmp_dir
+    ):
+        """If device explicitly sets build.container, it takes priority over env container."""
+        import textwrap
+        yaml_content = textwrap.dedent("""
+            specification:
+              version: "2.0"
+            environments:
+              default:
+                container: "env-container"
+                variables: []
+            containers:
+              device-container:
+                image: "device-image:latest"
+                file: null
+                args: []
+              env-container:
+                image: "env-image:latest"
+                file: null
+                args: []
+            registry:
+              devices:
+                - slug: my-device
+                  description: "My Device"
+                  vendor: acme
+                  soc_vendor: arm
+                  build:
+                    container: "device-container"
+                    path: build/my-device
+                    includes: []
+              releases:
+                - slug: my-release
+                  description: "My Release"
+                  includes: []
+              features: []
+              bsp: []
+        """)
+        registry_path = tmp_dir / "bsp-registry.yml"
+        registry_path.write_text(yaml_content)
+        manager = BspManager(config_path=str(registry_path))
+        manager.initialize()
+        resolved = manager.resolver.resolve("my-device", "my-release")
+        # Device's explicit container should win
+        assert resolved.container.image == "device-image:latest"
+
+    def test_unknown_named_env_raises(self, tmp_dir):
+        """A release referencing a non-existent named environment should exit."""
+        import textwrap
+        yaml_content = textwrap.dedent("""
+            specification:
+              version: "2.0"
+            containers:
+              some-container:
+                image: "some-image:latest"
+                file: null
+                args: []
+            registry:
+              devices:
+                - slug: my-device
+                  description: "My Device"
+                  vendor: acme
+                  soc_vendor: arm
+                  build:
+                    container: "some-container"
+                    path: build/my-device
+                    includes: []
+              releases:
+                - slug: bad-env-release
+                  description: "Bad"
+                  environment: "nonexistent-env"
+                  includes: []
+              features: []
+              bsp: []
+        """)
+        registry_path = tmp_dir / "bsp-registry.yml"
+        registry_path.write_text(yaml_content)
+        manager = BspManager(config_path=str(registry_path))
+        manager.initialize()
+        with pytest.raises(SystemExit):
+            manager.resolver.resolve("my-device", "bad-env-release")

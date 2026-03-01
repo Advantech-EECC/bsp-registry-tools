@@ -1,15 +1,23 @@
 specification:
   version: "2.0"
-
-# Global environment variables for all builds
+  
+# Global environment variables for all builds (base layer – applied to every build)
 # Use $ENV{VAR_NAME} syntax to reference system environment variables
 environment:
   - name: "GITCONFIG_FILE"
     value: "$ENV{HOME}/.gitconfig"
-  - name: "DL_DIR"
-    value: "$ENV{HOME}/data/cache/downloads"
-  - name: "SSTATE_DIR"
-    value: "$ENV{HOME}/data/cache/sstate"
+
+# Named environments: each entry bundles a container reference + variables.
+# The special name "default" is used for any release that does not specify an environment.
+# A release can override by setting its "environment:" field to a different name.
+environments:
+  default:
+    container: "debian-bookworm"
+    variables:
+      - name: "DL_DIR"
+        value: "$ENV{HOME}/data/cache/downloads"
+      - name: "SSTATE_DIR"
+        value: "$ENV{HOME}/data/cache/sstate"
 
 # Container definitions for build environments
 containers:
@@ -30,6 +38,7 @@ containers:
         - name: "KAS_VERSION"
           value: "5.2"
 
+
 registry:
 
   # =====================================
@@ -46,7 +55,7 @@ registry:
         container: "debian-bookworm"
         path: build/qemu-arm64
         includes:
-          - kas/qemu/qemuarm64.yml
+          - kas/poky/qemu/qemuarm64.yml
 
     - slug: qemuarm
       description: "QEMU ARM (32-bit, emulated)"
@@ -56,7 +65,7 @@ registry:
         container: "debian-bookworm"
         path: build/qemu-arm
         includes:
-          - kas/qemu/qemuarm.yml
+          - kas/poky/qemu/qemuarm.yml
 
     - slug: qemux86-64
       description: "QEMU x86-64 (emulated)"
@@ -66,7 +75,7 @@ registry:
         container: "debian-bookworm"
         path: build/qemu-x86-64
         includes:
-          - kas/qemu/qemux86-64.yml
+          - kas/poky/qemu/qemux86-64.yml
 
   # =====================================
   # Releases
@@ -78,13 +87,13 @@ registry:
       description: "Yocto 5.0 LTS (Scarthgap)"
       yocto_version: "5.0"
       includes:
-        - kas/scarthgap.yml
+        - kas/poky/scarthgap.yml
 
     - slug: styhead
       description: "Yocto 5.1 (Styhead)"
       yocto_version: "5.1"
       includes:
-        - kas/styhead.yml
+        - kas/poky/styhead.yml
 
   # =====================================
   # Features (optional add-ons)
@@ -101,37 +110,6 @@ registry:
     # --- QEMU ARM64 ---
     - name: poky-qemuarm64-scarthgap
       description: "Poky QEMU ARM64 Scarthgap (Yocto 5.0 LTS)"
-<<<<<<< HEAD:examples/bsp-registry.yaml
-      os:
-        name: linux
-        build_system: yocto
-        version: "5.0"
-      build:
-        path: build/qemu-arm64-scarthgap
-        environment:
-          container: "debian-bookworm"
-        configuration:
-          - kas/poky/scarthgap.yaml
-          - kas/poky/qemu/qemuarm64.yaml
-
-    - name: poky-qemuarm64-styhead
-      description: "Poky QEMU ARM64 Styhead (Yocto 5.1)"
-      os:
-        name: linux
-        build_system: yocto
-        version: "5.1"
-      build:
-        path: build/qemu-arm64-styhead
-        environment:
-          container: "debian-bookworm"
-        configuration:
-          - kas/poky/styhead.yaml
-          - kas/poky/qemu/qemuarm64.yaml
-
-    # =====================================
-    # QEMU x86-64 BSPs
-    # =====================================
-=======
       device: qemuarm64
       release: scarthgap
       features: []
@@ -141,42 +119,10 @@ registry:
       device: qemuarm64
       release: styhead
       features: []
->>>>>>> b47ef93 (feat: implement BSP registry schema v2.0 (breaking change, drops v1.0 support)):examples/bsp-registry.yml
 
     # --- QEMU x86-64 ---
     - name: poky-qemux86-64-scarthgap
       description: "Poky QEMU x86-64 Scarthgap (Yocto 5.0 LTS)"
-<<<<<<< HEAD:examples/bsp-registry.yaml
-      os:
-        name: linux
-        build_system: yocto
-        version: "5.0"
-      build:
-        path: build/qemu-x86-64-scarthgap
-        environment:
-          container: "debian-bookworm"
-        configuration:
-          - kas/poky/scarthgap.yaml
-          - kas/poky/qemu/qemux86-64.yaml
-
-    - name: poky-qemux86-64-styhead
-      description: "Poky QEMU x86-64 Styhead (Yocto 5.1)"
-      os:
-        name: linux
-        build_system: yocto
-        version: "5.1"
-      build:
-        path: build/qemu-x86-64-styhead
-        environment:
-          container: "debian-bookworm"
-        configuration:
-          - kas/poky/styhead.yaml
-          - kas/poky/qemu/qemux86-64.yaml
-
-    # =====================================
-    # QEMU ARM (32-bit) BSPs
-    # =====================================
-=======
       device: qemux86-64
       release: scarthgap
       features: []
@@ -186,65 +132,10 @@ registry:
       device: qemux86-64
       release: styhead
       features: []
->>>>>>> b47ef93 (feat: implement BSP registry schema v2.0 (breaking change, drops v1.0 support)):examples/bsp-registry.yml
 
     # --- QEMU ARM (32-bit) ---
     - name: poky-qemuarm-scarthgap
       description: "Poky QEMU ARM (32-bit) Scarthgap (Yocto 5.0 LTS)"
-<<<<<<< HEAD:examples/bsp-registry.yaml
-      os:
-        name: linux
-        build_system: yocto
-        version: "5.0"
-      build:
-        path: build/qemu-arm-scarthgap
-        environment:
-          container: "debian-bookworm"
-        configuration:
-          - kas/poky/scarthgap.yaml
-          - kas/poky/qemu/qemuarm.yaml
-
-    # =====================================
-    # Isar QEMU Ubuntu ARM64 BSPs
-    # =====================================
-
-    - name: isar-qemuarm64
-      description: "Isar QEMU Ubuntu ARM64 Isar (version 0.11)"
-      os:
-        name: linux
-        build_system: isar
-        version: "0.11"
-      build:
-        path: build/qemu-arm64-isar
-        environment:
-          container: "isar-debian-trixie"
-        configuration:
-          - kas/isar/isar.yaml
-          - kas/isar/distro/debian-trixie.yaml
-          - kas/isar/qemu/common.yaml
-          - kas/isar/qemu/qemuarm64.yaml
-
-    # =====================================
-    # Isar QEMU Ubuntu X86_64 BSPs
-    # =====================================
-
-    - name: isar-qemux86-64
-      description: "Isar QEMU Ubuntu X86_64 Isar (version 0.11)"
-      os:
-        name: linux
-        build_system: isar
-        version: "0.11"
-      build:
-        path: build/qemu-x86-64-isar
-        environment:
-          container: "isar-debian-trixie"
-        configuration:
-          - kas/isar/isar.yaml
-          - kas/isar/distro/debian-trixie.yaml
-          - kas/isar/qemu/common.yaml
-          - kas/isar/qemu/qemux86-64.yaml
-=======
       device: qemuarm
       release: scarthgap
       features: []
->>>>>>> b47ef93 (feat: implement BSP registry schema v2.0 (breaking change, drops v1.0 support)):examples/bsp-registry.yml

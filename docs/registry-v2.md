@@ -30,6 +30,13 @@ environment:              # optional – global env vars for all builds
   - name: "DL_DIR"
     value: "$ENV{HOME}/downloads"
 
+environments:             # optional – named build environments
+  default:                # special name: used when release has no environment field
+    container: "debian-bookworm"
+    variables:
+      - name: "DL_DIR"
+        value: "$ENV{HOME}/downloads"
+
 containers:               # optional – Docker container definitions (dict)
   debian-bookworm:
     image: "my-registry/debian/kas:5.1"
@@ -78,7 +85,8 @@ environment:
 ## `containers` (optional)
 
 Docker container definitions used as build environments.  Containers are
-referenced from `devices[*].build.container`.
+referenced from `devices[*].build.container` **or** from
+`environments[*].container`.
 
 ```yaml
 containers:
@@ -97,6 +105,55 @@ containers:
 
 ---
 
+## `environments` (optional)
+
+Named build environments bundle a **container reference** and optional
+**environment variables** together under a single name.  This makes it
+easy to associate a specific container image and variable set with a
+particular class of releases (e.g., a separate Isar container).
+
+```yaml
+environments:
+  default:                    # used for any release that does not name an environment
+    container: "debian-bookworm"
+    variables:
+      - name: "DL_DIR"
+        value: "$ENV{HOME}/data/cache/downloads"
+      - name: "SSTATE_DIR"
+        value: "$ENV{HOME}/data/cache/sstate"
+
+  isar-build:                 # named environment for Isar releases
+    container: "debian-bookworm-isar"
+    variables:
+      - name: "DL_DIR"
+        value: "$ENV{HOME}/data/cache/isar-downloads"
+```
+
+### Resolution rules
+
+1. If `release.environment` is set, the resolver looks up that name in
+   `environments`.  If not found, the tool exits with a clear error.
+2. If `release.environment` is **not** set, the resolver uses the
+   `"default"` named environment (if defined).
+3. If no named environment applies, the device's `build.container` (if set)
+   and the root `environment` variable list are used as before.
+
+### Container priority
+
+| Source | Priority |
+|--------|----------|
+| `device.build.container` | **Highest** – explicit device override |
+| Named environment container | Used when device has no container set |
+| None | No container (bare `kas` run) |
+
+### Variable merging
+
+Named environment variables are merged **on top of** the root-level
+`environment` list (root vars first, named-env vars win on conflict).
+Feature-level `env` variables are applied last.
+
+---
+
 ## `registry.devices`
 
 Each device represents a specific hardware board or emulated target.
@@ -110,7 +167,8 @@ registry:
       soc_vendor: nxp                # silicon vendor (used in feature compat checks)
       soc_family: imx8               # optional SoC family
       build:
-        container: "debian-bookworm" # references containers section
+        container: "debian-bookworm" # optional – references containers section
+                                     # if omitted, the named environment's container is used
         path: build/imx8mp-adv       # build output directory
         includes:                    # device-specific KAS files
           - kas/boards/imx8mp-adv.yml
@@ -120,12 +178,12 @@ registry:
 
 ### `devices[*].build` fields
 
-| Field        | Type       | Description                                  |
-|--------------|------------|----------------------------------------------|
-| `container`  | string     | Container name (key in `containers` section) |
-| `path`       | string     | Build output directory                       |
-| `includes`   | list[str]  | Device-specific KAS configuration files      |
-| `local_conf` | list[str]  | Lines appended to `local.conf` for this device |
+| Field        | Type          | Description                                           |
+|--------------|---------------|-------------------------------------------------------|
+| `container`  | string (opt.) | Container name (key in `containers` section). Omit to rely on the named environment's container. |
+| `path`       | string        | Build output directory                                |
+| `includes`   | list[str]     | Device-specific KAS configuration files               |
+| `local_conf` | list[str]     | Lines appended to `local.conf` for this device        |
 
 ---
 
@@ -140,18 +198,25 @@ registry:
       description: "Yocto 5.0 LTS (Scarthgap)"
       yocto_version: "5.0"           # optional Yocto version string
       isar_version: null             # optional Isar version string
+      # environment: default         # optional – name of the environment to use
       includes:                      # base KAS files for this release
         - kas/scarthgap.yml
       vendor_includes:               # optional vendor-specific overrides
         - vendor: advantech
           includes:
             - kas/advantech/scarthgap-vendor.yml
-    - slug: styhead
-      description: "Yocto 5.1 (Styhead)"
-      yocto_version: "5.1"
+
+    - slug: isar-kirkstone
+      description: "Isar Kirkstone"
+      environment: isar-build        # use the 'isar-build' named environment
       includes:
-        - kas/styhead.yml
+        - kas/isar/kirkstone.yml
 ```
+
+The optional `environment` field names an entry from the top-level
+`environments` dict.  When omitted, the `"default"` named environment is
+used (if defined).  See [Named environments](#environments-optional) for
+full resolution rules.
 
 ### `releases[*].vendor_includes`
 
@@ -238,13 +303,28 @@ registry:
 specification:
   version: "2.0"
 
+# Global environment variables (applied to all builds as a base)
 environment:
-  - name: "DL_DIR"
-    value: "$ENV{HOME}/data/cache/downloads"
-  - name: "SSTATE_DIR"
-    value: "$ENV{HOME}/data/cache/sstate"
   - name: "GITCONFIG_FILE"
     value: "$ENV{HOME}/.gitconfig"
+
+# Named environments: bundle a container + variables under a name
+environments:
+  default:                              # used by all releases unless overridden
+    container: "debian-bookworm"
+    variables:
+      - name: "DL_DIR"
+        value: "$ENV{HOME}/data/cache/downloads"
+      - name: "SSTATE_DIR"
+        value: "$ENV{HOME}/data/cache/sstate"
+
+  isar-build:                           # used only by Isar releases
+    container: "debian-bookworm-isar"
+    variables:
+      - name: "DL_DIR"
+        value: "$ENV{HOME}/data/cache/isar-downloads"
+      - name: "SSTATE_DIR"
+        value: "$ENV{HOME}/data/cache/isar-sstate"
 
 containers:
   debian-bookworm:
@@ -255,6 +335,12 @@ containers:
         value: "debian-bookworm"
       - name: "KAS_VERSION"
         value: "5.1"
+  debian-bookworm-isar:
+    image: "bsp/registry/debian/isar-kas:1.2"
+    file: Dockerfile.isar
+    args:
+      - name: "KAS_VERSION"
+        value: "1.2"
 
 registry:
   devices:
@@ -264,7 +350,7 @@ registry:
       soc_vendor: nxp
       soc_family: imx8
       build:
-        container: "debian-bookworm"
+        # No container specified – uses the active named environment's container
         path: build/imx8mp-adv
         includes:
           - kas/boards/imx8mp-adv.yml
@@ -274,7 +360,7 @@ registry:
       vendor: qemu
       soc_vendor: arm
       build:
-        container: "debian-bookworm"
+        container: "debian-bookworm"   # explicit override (still valid)
         path: build/qemuarm64
         includes:
           - kas/qemu/qemuarm64.yml
@@ -283,6 +369,7 @@ registry:
     - slug: scarthgap
       description: "Yocto 5.0 LTS (Scarthgap)"
       yocto_version: "5.0"
+      # No environment field → uses 'default' named environment
       includes:
         - kas/scarthgap.yml
       vendor_includes:
@@ -295,6 +382,12 @@ registry:
       yocto_version: "5.1"
       includes:
         - kas/styhead.yml
+
+    - slug: isar-kirkstone
+      description: "Isar Kirkstone"
+      environment: isar-build          # use the 'isar-build' named environment
+      includes:
+        - kas/isar/kirkstone.yml
 
   features:
     - slug: ota
