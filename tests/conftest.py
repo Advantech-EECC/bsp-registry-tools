@@ -249,6 +249,41 @@ registry:
       features: []
 """
 
+REGISTRY_WITH_COPY_YAML = """
+specification:
+  version: "2.0"
+containers:
+  debian-bookworm:
+    image: "test/debian:latest"
+    file: null
+    args: []
+registry:
+  devices:
+    - slug: isar-qemu
+      description: "QEMU Isar"
+      vendor: qemu
+      soc_vendor: arm
+      build:
+        container: "debian-bookworm"
+        path: build/isar-qemu
+        includes:
+          - kas/isar/qemu.yml
+        copy:
+          - scripts/isar-runqemu.sh: build/isar-qemu/
+  releases:
+    - slug: isar-v0.11
+      description: "Isar v0.11"
+      includes:
+        - kas/isar/v0.11.yml
+  features: []
+  bsp:
+    - name: isar-qemu-v0.11
+      description: "Isar QEMU v0.11"
+      device: isar-qemu
+      release: isar-v0.11
+      features: []
+"""
+
 
 # =============================================================================
 # Fixtures
@@ -290,6 +325,14 @@ def registry_with_named_env_file(tmp_dir):
     """Create a registry YAML file with named environments."""
     registry_path = tmp_dir / "bsp-registry.yml"
     registry_path.write_text(REGISTRY_WITH_NAMED_ENVIRONMENTS_YAML)
+    return registry_path
+
+
+@pytest.fixture
+def registry_with_copy_file(tmp_dir):
+    """Create a registry YAML file with copy entries in device build config."""
+    registry_path = tmp_dir / "bsp-registry.yml"
+    registry_path.write_text(REGISTRY_WITH_COPY_YAML)
     return registry_path
 
 

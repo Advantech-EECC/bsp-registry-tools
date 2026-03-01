@@ -41,6 +41,8 @@ class ResolvedConfig:
         container: Docker configuration for the build environment
         local_conf: Combined local.conf lines from device and features
         env: Combined environment variables from features
+        copy: List of ``{source: destination}`` file-copy entries from the
+              device build configuration (resolved relative to registry dir).
     """
     device: Device
     release: Release
@@ -50,6 +52,7 @@ class ResolvedConfig:
     container: Optional[Docker] = None
     local_conf: List[str] = field(default_factory=empty_list)
     env: List[EnvironmentVariable] = field(default_factory=empty_list)
+    copy: List[Dict[str, str]] = field(default_factory=empty_list)
 
 
 # =============================================================================
@@ -306,6 +309,7 @@ class V2Resolver:
             container=container,
             local_conf=local_conf,
             env=env,
+            copy=list(device.build.copy),
         )
 
     def resolve_preset(self, preset_name: str) -> Tuple[ResolvedConfig, BspPreset]:

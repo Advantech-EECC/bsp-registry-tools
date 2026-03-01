@@ -262,3 +262,22 @@ class TestNamedEnvironmentParsing:
         result = get_registry_from_yaml_file(registry_file)
         # Default is an empty dict (not None)
         assert result.environments == {}
+
+
+# =============================================================================
+# Tests for copy field in device build configuration
+# =============================================================================
+
+class TestDeviceBuildCopy:
+    def test_device_with_copy_parsed(self, registry_with_copy_file):
+        result = get_registry_from_yaml_file(registry_with_copy_file)
+        devices = {d.slug: d for d in result.registry.devices}
+        assert "isar-qemu" in devices
+        device = devices["isar-qemu"]
+        assert len(device.build.copy) == 1
+        assert device.build.copy[0] == {"scripts/isar-runqemu.sh": "build/isar-qemu/"}
+
+    def test_device_without_copy_defaults_to_empty_list(self, registry_file):
+        result = get_registry_from_yaml_file(registry_file)
+        device = result.registry.devices[0]
+        assert device.build.copy == []

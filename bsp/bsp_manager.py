@@ -4,6 +4,7 @@ Main BSP management class coordinating registry, builds, and exports.
 
 import logging
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -256,6 +257,56 @@ class BspManager:
         logging.info(f"Preparing build directory: {build_path}")
         resolver.ensure_directory(build_path)
 
+    def _copy_files(self, resolved: ResolvedConfig) -> None:
+        """
+        Copy files specified in ``device.build.copy`` into their destinations.
+
+        Each entry in ``resolved.copy`` is a single-key dict mapping a source
+        path to a destination path.  Both paths are resolved relative to the
+        registry file's parent directory.  If the destination ends with ``/``
+        or is an existing directory the source filename is preserved inside it.
+
+        Args:
+            resolved: Resolved build configuration containing copy entries.
+
+        Raises:
+            SystemExit: If a source file does not exist.
+        """
+        if not resolved.copy:
+            return
+
+        base = self.config_path.parent
+        for copy_entry in resolved.copy:
+            for src, dst in copy_entry.items():
+                src_path = Path(src)
+                if not src_path.is_absolute():
+                    src_path = (base / src_path).resolve()
+
+                if not src_path.exists():
+                    self.logger.error(
+                        f"Copy source file not found: {src_path}"
+                    )
+                    sys.exit(1)
+
+                dst_path = Path(dst)
+                if not dst_path.is_absolute():
+                    dst_path = (base / dst_path).resolve()
+
+                # If destination looks like a directory (trailing slash or
+                # already is one), place the file inside it.
+                if str(dst).endswith("/") or dst_path.is_dir():
+                    dst_path = dst_path / src_path.name
+
+                dst_path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    shutil.copy2(str(src_path), str(dst_path))
+                except OSError as e:
+                    self.logger.error(
+                        f"Failed to copy '{src_path}' to '{dst_path}': {e}"
+                    )
+                    sys.exit(1)
+                self.logger.info(f"Copied {src_path} -> {dst_path}")
+
     # ------------------------------------------------------------------
     # Internal: KasManager factory for a resolved config
     # ------------------------------------------------------------------
@@ -390,6 +441,7 @@ class BspManager:
                 logging.info("Skipping Docker build in checkout mode")
 
         self.prepare_build_directory(resolved.build_path)
+        self._copy_files(resolved)
 
         kas_mgr = self._get_kas_manager_for_resolved(
             resolved, use_container=not checkout_only

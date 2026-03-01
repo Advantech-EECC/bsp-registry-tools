@@ -174,16 +174,19 @@ registry:
           - kas/boards/imx8mp-adv.yml
         local_conf:                  # optional extra local.conf lines
           - "MACHINE_EXTRA_RDEPENDS += 'kernel-modules'"
+        copy:                        # optional files to copy before the build
+          - scripts/setup.sh: build/imx8mp-adv/
 ```
 
 ### `devices[*].build` fields
 
-| Field        | Type          | Description                                           |
-|--------------|---------------|-------------------------------------------------------|
-| `container`  | string (opt.) | Container name (key in `containers` section). Omit to rely on the named environment's container. |
-| `path`       | string        | Build output directory                                |
-| `includes`   | list[str]     | Device-specific KAS configuration files               |
-| `local_conf` | list[str]     | Lines appended to `local.conf` for this device        |
+| Field        | Type              | Description                                           |
+|--------------|-------------------|-------------------------------------------------------|
+| `container`  | string (opt.)     | Container name (key in `containers` section). Omit to rely on the named environment's container. |
+| `path`       | string            | Build output directory                                |
+| `includes`   | list[str]         | Device-specific KAS configuration files               |
+| `local_conf` | list[str]         | Lines appended to `local.conf` for this device        |
+| `copy`       | list[dict[str, str]] | Files to copy into the build tree before the build starts. Each entry is a single-key dict `{"source": "destination"}`. Both paths are resolved relative to the registry file's parent directory. If the destination ends with `/` or is an existing directory, the source filename is preserved. |
 
 ---
 

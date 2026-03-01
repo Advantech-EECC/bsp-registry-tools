@@ -98,6 +98,9 @@ registry:
         path: build/isar-qemu-arm64
         includes:
           - kas/qemu/qemuarm64.yml
+        # Copy the Isar QEMU launch helper into the build directory before building
+        copy:
+          - isar/scripts/isar-runqemu.sh: build/isar-qemu-arm64/
 
   # =====================================
   # Releases

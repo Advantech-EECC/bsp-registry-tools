@@ -116,11 +116,16 @@ class DeviceBuild:
                    container is used instead.
         includes: List of device-specific KAS configuration files
         local_conf: List of local.conf lines to append for this device
+        copy: List of ``{source: destination}`` file-copy entries.  Each
+              entry copies a single file (source) to a directory or path
+              (destination) before the build starts.  Both paths are
+              resolved relative to the registry file's parent directory.
     """
     path: str
     container: Optional[str] = None
     includes: List[str] = field(default_factory=empty_list)
     local_conf: List[str] = field(default_factory=empty_list)
+    copy: List[Dict[str, str]] = field(default_factory=empty_list)
 
 
 @dataclass

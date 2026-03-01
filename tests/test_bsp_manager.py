@@ -548,3 +548,69 @@ class TestNamedEnvironmentsInResolver:
         manager.initialize()
         with pytest.raises(SystemExit):
             manager.resolver.resolve("my-device", "bad-env-release")
+
+
+# =============================================================================
+# Tests for copy field support
+# =============================================================================
+
+class TestCopyFiles:
+    def test_copy_field_parsed(self, registry_with_copy_file):
+        """DeviceBuild.copy is parsed from YAML."""
+        manager = BspManager(config_path=str(registry_with_copy_file))
+        manager.initialize()
+        device = manager.resolver.get_device("isar-qemu")
+        assert len(device.build.copy) == 1
+        assert device.build.copy[0] == {"scripts/isar-runqemu.sh": "build/isar-qemu/"}
+
+    def test_copy_propagated_to_resolved(self, registry_with_copy_file):
+        """ResolvedConfig.copy contains the device build copy entries."""
+        manager = BspManager(config_path=str(registry_with_copy_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("isar-qemu", "isar-v0.11")
+        assert resolved.copy == [{"scripts/isar-runqemu.sh": "build/isar-qemu/"}]
+
+    def test_copy_empty_when_not_specified(self, registry_file):
+        """ResolvedConfig.copy is empty when no copy entries are defined."""
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("test-device", "test-release")
+        assert resolved.copy == []
+
+    def test_copy_files_creates_file_in_destination(self, registry_with_copy_file, tmp_dir):
+        """_copy_files copies the source file to the destination directory."""
+        manager = BspManager(config_path=str(registry_with_copy_file))
+        manager.initialize()
+
+        # Create the source file relative to registry dir
+        scripts_dir = registry_with_copy_file.parent / "scripts"
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        src_file = scripts_dir / "isar-runqemu.sh"
+        src_file.write_text("#!/bin/sh\necho hello\n")
+
+        # Ensure destination directory exists
+        dst_dir = registry_with_copy_file.parent / "build" / "isar-qemu"
+        dst_dir.mkdir(parents=True, exist_ok=True)
+
+        resolved = manager.resolver.resolve("isar-qemu", "isar-v0.11")
+        manager._copy_files(resolved)
+
+        dst_file = dst_dir / "isar-runqemu.sh"
+        assert dst_file.exists()
+        assert dst_file.read_text() == "#!/bin/sh\necho hello\n"
+
+    def test_copy_files_missing_source_exits(self, registry_with_copy_file):
+        """_copy_files exits with an error when the source file does not exist."""
+        manager = BspManager(config_path=str(registry_with_copy_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("isar-qemu", "isar-v0.11")
+        with pytest.raises(SystemExit):
+            manager._copy_files(resolved)
+
+    def test_copy_files_noop_when_empty(self, registry_file):
+        """_copy_files does nothing when resolved.copy is empty."""
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("test-device", "test-release")
+        # Should not raise
+        manager._copy_files(resolved)
