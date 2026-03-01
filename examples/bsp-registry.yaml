@@ -19,6 +19,13 @@ environments:
       - name: "SSTATE_DIR"
         value: "$ENV{HOME}/data/cache/sstate"
 
+  # Isar uses its own Debian-based build system – point to a dedicated container
+  isar-build:
+    container: "debian-bookworm-isar"
+    variables:
+      - name: "DL_DIR"
+        value: "$ENV{HOME}/data/cache/isar-downloads"
+
 # Container definitions for build environments
 containers:
   - debian-bookworm:
@@ -38,6 +45,11 @@ containers:
         - name: "KAS_VERSION"
           value: "5.2"
 
+
+  debian-bookworm-isar:
+    image: "ghcr.io/ilbers/isar:latest"
+    file: null
+    args: []
 
 registry:
 
@@ -77,6 +89,16 @@ registry:
         includes:
           - kas/poky/qemu/qemux86-64.yml
 
+    # Isar QEMU ARM64 – uses the isar-build environment (set at release level)
+    - slug: qemuarm64-isar
+      description: "QEMU ARM64 (Isar / Debian-based)"
+      vendor: qemu
+      soc_vendor: arm
+      build:
+        path: build/isar-qemu-arm64
+        includes:
+          - kas/qemu/qemuarm64.yml
+
   # =====================================
   # Releases
   # =====================================
@@ -94,6 +116,13 @@ registry:
       yocto_version: "5.1"
       includes:
         - kas/poky/styhead.yml
+
+    # Isar v0.11 – uses the isar-build named environment (Debian container + isar download cache)
+    - slug: isar-v0.11
+      description: "Isar v0.11"
+      environment: isar-build
+      includes:
+        - kas/isar/v0.11.yml
 
   # =====================================
   # Features (optional add-ons)
@@ -138,4 +167,11 @@ registry:
       description: "Poky QEMU ARM (32-bit) Scarthgap (Yocto 5.0 LTS)"
       device: qemuarm
       release: scarthgap
+      features: []
+
+    # --- QEMU ARM64 Isar ---
+    - name: isar-qemuarm64-v0.11
+      description: "Isar v0.11 QEMU ARM64"
+      device: qemuarm64-isar
+      release: isar-v0.11
       features: []
