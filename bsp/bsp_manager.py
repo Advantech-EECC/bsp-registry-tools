@@ -109,14 +109,14 @@ class BspManager:
         """
         presets = self.model.registry.bsp if self.model else []
         if not presets:
-            logging.info("No BSP presets defined in registry")
-            logging.info(
+            print("No BSP presets defined in registry")
+            print(
                 "Use 'bsp list devices', 'bsp list releases', or "
                 "'bsp list features' to see available components."
             )
             return
 
-        logging.info("Available BSP presets:")
+        print("Available BSP presets:")
         for preset in presets:
             features_str = (
                 f", features: {', '.join(preset.features)}" if preset.features else ""
@@ -130,10 +130,10 @@ class BspManager:
         """List all hardware devices defined in the registry."""
         devices = self.model.registry.devices if self.model else []
         if not devices:
-            logging.info("No devices found in registry")
+            print("No devices found in registry")
             return
 
-        logging.info("Available devices:")
+        print("Available devices:")
         for device in devices:
             soc_family = (
                 f", soc_family: {device.soc_family}" if device.soc_family else ""
@@ -154,15 +154,15 @@ class BspManager:
         """
         releases = self.model.registry.releases if self.model else []
         if not releases:
-            logging.info("No releases found in registry")
+            print("No releases found in registry")
             return
 
         if device_slug:
             # Validate the device exists (exits on failure)
             device = self.resolver.get_device(device_slug)
-            logging.info(f"Releases compatible with device '{device_slug}':")
+            print(f"Releases compatible with device '{device_slug}':")
         else:
-            logging.info("Available releases:")
+            print("Available releases:")
             device = None
 
         for release in releases:
@@ -179,10 +179,10 @@ class BspManager:
         """List all feature definitions in the registry."""
         features = self.model.registry.features if self.model else []
         if not features:
-            logging.info("No features found in registry")
+            print("No features found in registry")
             return
 
-        logging.info("Available features:")
+        print("Available features:")
         for feature in features:
             compat = ""
             if feature.compatibility:
@@ -200,10 +200,10 @@ class BspManager:
     def list_containers(self) -> None:
         """List all available containers in the registry."""
         if not self.containers:
-            logging.info("No container definitions found in registry")
+            print("No container definitions found in registry")
             return
 
-        logging.info("Available Containers:")
+        print("Available Containers:")
         for container_name, container_config in self.containers.items():
             print(f"- {container_name}:")
             print(f"    Image: {container_config.image}")
@@ -237,7 +237,7 @@ class BspManager:
 
         logging.error(f"BSP preset not found: '{bsp_name}'")
         available = [p.name for p in (self.model.registry.bsp or [])]
-        logging.info("Available presets: " + (", ".join(available) or "(none)"))
+        print("Available presets: " + (", ".join(available) or "(none)"))
         sys.exit(1)
 
     # ------------------------------------------------------------------
