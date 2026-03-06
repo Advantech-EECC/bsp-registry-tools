@@ -83,3 +83,19 @@ class TestEnvironmentManager:
             ]
             manager = EnvironmentManager(vars_)
             assert manager.get_value("FULL_ADDR") == "testuser@testhost"
+
+    def test_setup_environment_skips_gitconfig_file_when_path_missing(self):
+        """GITCONFIG_FILE must not be forwarded to sub-processes when the file does not exist."""
+        vars_ = [EnvironmentVariable(name="GITCONFIG_FILE", value="/nonexistent/path/.gitconfig")]
+        manager = EnvironmentManager(vars_)
+        result = manager.setup_environment({})
+        assert "GITCONFIG_FILE" not in result
+
+    def test_setup_environment_includes_gitconfig_file_when_path_exists(self, tmp_path):
+        """GITCONFIG_FILE should be forwarded when the file actually exists."""
+        gitconfig = tmp_path / ".gitconfig"
+        gitconfig.write_text("[user]\n\tname = Test\n")
+        vars_ = [EnvironmentVariable(name="GITCONFIG_FILE", value=str(gitconfig))]
+        manager = EnvironmentManager(vars_)
+        result = manager.setup_environment({})
+        assert result["GITCONFIG_FILE"] == str(gitconfig)

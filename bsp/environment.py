@@ -164,9 +164,18 @@ class EnvironmentManager:
         """
         env = base_env.copy()
 
+        # Variables whose paths must already exist; skip them if they don't to
+        # avoid downstream tools (e.g. kas) failing on a missing path.
+        path_must_exist_vars = {'GITCONFIG_FILE'}
+
         # Add all configured environment variables (overwrite existing)
         for env_var in self.environment_vars:
             expanded_value = self._expand_environment_variables(env_var.value)
+            if env_var.name in path_must_exist_vars and not resolver.exists(expanded_value):
+                logging.debug(
+                    f"Skipping {env_var.name}={expanded_value} (path does not exist)"
+                )
+                continue
             env[env_var.name] = expanded_value
             logging.debug(f"Set {env_var.name}={expanded_value}")
 
