@@ -278,25 +278,26 @@ class TestBspManagerMisc:
         manager.initialize()
         manager.cleanup()  # Should not raise
 
-    def test_initialize(self, registry_file):
-        manager = BspManager(config_path=str(registry_file))
+    def test_initialize(self, registry_with_env_file):
+        manager = BspManager(config_path=str(registry_with_env_file))
         manager.initialize()
         assert len(manager.model.registry.bsp) == 2
         names = [b.name for b in manager.model.registry.bsp]
         assert "qemu-arm64" in names
         assert "qemu-x86-64" in names
 
-    def test_bsp_with_os_info(self, registry_with_env_file):
-        manager = BspManager(config_path=str(registry_with_env_file))
+    def test_bsp_has_expected_fields(self, registry_file):
+        manager = BspManager(config_path=str(registry_file))
         manager.initialize()
-        bsp_obj = manager.get_bsp_by_name("qemu-arm64")
-        assert bsp_obj.os is not None
-        assert bsp_obj.os.name == "linux"
-        assert bsp_obj.os.build_system == "yocto"
+        bsp_obj = manager.get_bsp_by_name("test-bsp")
+        assert bsp_obj.name == "test-bsp"
+        assert bsp_obj.description == "Test BSP"
+        assert bsp_obj.device == "test-device"
+        assert bsp_obj.release == "test-release"
 
     def test_build_bsp_uses_registry_dir_for_dockerfile(self, tmp_dir):
         """build_docker must be called with the registry file's directory, not CWD."""
-        from unittest.mock import patch, MagicMock
+        from unittest.mock import patch
         from bsp.kas_manager import KasManager
 
         # Create a Dockerfile next to the registry file in a subdirectory
@@ -304,25 +305,39 @@ class TestBspManagerMisc:
         registry_dir.mkdir()
         dockerfile = registry_dir / "Dockerfile.ubuntu"
         dockerfile.write_text("FROM ubuntu:22.04\n")
+        kas_file = registry_dir / "test.yml"
+        kas_file.write_text("header:\n  version: 14\nmachine: qemuarm64\n")
 
         registry_content = f"""
 specification:
-  version: "1.0"
+  version: "2.0"
+containers:
+  ubuntu-22.04:
+    image: "test/ubuntu-22.04:latest"
+    file: Dockerfile.ubuntu
+    args: []
 registry:
+  devices:
+    - slug: test-device
+      description: "Test Device"
+      vendor: test-vendor
+      soc_vendor: test-soc
+      build:
+        container: "ubuntu-22.04"
+        path: build/test
+        includes:
+          - {kas_file}
+  releases:
+    - slug: test-release
+      description: "Test Release"
+      includes: []
+  features: []
   bsp:
     - name: test-bsp
       description: "Test BSP"
-      build:
-        path: build/test
-        environment:
-          container: "ubuntu-22.04"
-        configuration:
-          - test.yml
-containers:
-  - ubuntu-22.04:
-      image: "test/ubuntu-22.04:latest"
-      file: Dockerfile.ubuntu
-      args: []
+      device: test-device
+      release: test-release
+      features: []
 """
         registry_file = registry_dir / "bsp-registry.yml"
         registry_file.write_text(registry_content)
@@ -337,6 +352,7 @@ containers:
                         manager.build_bsp("test-bsp")
 
         # The first argument to build_docker must be the registry file's parent dir
+        assert mock_build_docker.called
         called_dockerfile_dir = mock_build_docker.call_args[0][0]
         assert called_dockerfile_dir == str(registry_dir)
 
@@ -349,25 +365,39 @@ containers:
         registry_dir.mkdir()
         dockerfile = registry_dir / "Dockerfile.ubuntu"
         dockerfile.write_text("FROM ubuntu:22.04\n")
+        kas_file = registry_dir / "test.yml"
+        kas_file.write_text("header:\n  version: 14\nmachine: qemuarm64\n")
 
         registry_content = f"""
 specification:
-  version: "1.0"
+  version: "2.0"
+containers:
+  ubuntu-22.04:
+    image: "test/ubuntu-22.04:latest"
+    file: Dockerfile.ubuntu
+    args: []
 registry:
+  devices:
+    - slug: test-device
+      description: "Test Device"
+      vendor: test-vendor
+      soc_vendor: test-soc
+      build:
+        container: "ubuntu-22.04"
+        path: build/test
+        includes:
+          - {kas_file}
+  releases:
+    - slug: test-release
+      description: "Test Release"
+      includes: []
+  features: []
   bsp:
     - name: test-bsp
       description: "Test BSP"
-      build:
-        path: build/test
-        environment:
-          container: "ubuntu-22.04"
-        configuration:
-          - test.yml
-containers:
-  - ubuntu-22.04:
-      image: "test/ubuntu-22.04:latest"
-      file: Dockerfile.ubuntu
-      args: []
+      device: test-device
+      release: test-release
+      features: []
 """
         registry_file = registry_dir / "bsp-registry.yml"
         registry_file.write_text(registry_content)
@@ -381,6 +411,7 @@ containers:
                     with patch.object(KasManager, "dump_config", return_value=None):
                         manager.shell_into_bsp("test-bsp")
 
+        assert mock_build_docker.called
         called_dockerfile_dir = mock_build_docker.call_args[0][0]
         assert called_dockerfile_dir == str(registry_dir)
 
@@ -388,36 +419,50 @@ containers:
         """KasManager must include the registry file's directory in its search paths."""
         registry_dir = tmp_dir / "remote_cache"
         registry_dir.mkdir()
+        kas_file = registry_dir / "test.yml"
+        kas_file.write_text("header:\n  version: 14\nmachine: qemuarm64\n")
 
-        registry_content = """
+        registry_content = f"""
 specification:
-  version: "1.0"
+  version: "2.0"
+containers:
+  ubuntu-22.04:
+    image: "test/ubuntu-22.04:latest"
+    file: null
+    args: []
 registry:
+  devices:
+    - slug: test-device
+      description: "Test Device"
+      vendor: test-vendor
+      soc_vendor: test-soc
+      build:
+        container: "ubuntu-22.04"
+        path: build/test
+        includes:
+          - {kas_file}
+  releases:
+    - slug: test-release
+      description: "Test Release"
+      includes: []
+  features: []
   bsp:
     - name: test-bsp
       description: "Test BSP"
-      build:
-        path: build/test
-        environment:
-          container: "ubuntu-22.04"
-        configuration:
-          - test.yml
-containers:
-  - ubuntu-22.04:
-      image: "test/ubuntu-22.04:latest"
-      file: Dockerfile.ubuntu
-      args: []
+      device: test-device
+      release: test-release
+      features: []
 """
         registry_file = registry_dir / "bsp-registry.yml"
         registry_file.write_text(registry_content)
 
         manager = BspManager(config_path=str(registry_file))
         manager.initialize()
-        bsp_obj = manager.get_bsp_by_name("test-bsp")
+        resolved = manager.resolver.resolve("test-device", "test-release")
 
-        kas_mgr = manager._get_kas_manager_for_bsp(bsp_obj, use_container=False)
+        kas_mgr = manager._get_kas_manager_for_resolved(resolved, use_container=False)
         assert str(registry_dir) in kas_mgr.search_paths
-        assert manager.model is not None
+        manager._cleanup_temp_kas_file()
 
 
 # =============================================================================

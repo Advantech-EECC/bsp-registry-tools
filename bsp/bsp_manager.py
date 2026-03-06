@@ -401,6 +401,7 @@ class BspManager:
             use_container=use_container,
             container_image=container_image,
             container_runtime_args=container_runtime_args,
+            search_paths=[str(self.config_path.parent)],
             env_manager=env_mgr,
         )
         return kas_mgr
@@ -441,7 +442,7 @@ class BspManager:
         if not checkout_only and resolved.container:
             container = resolved.container
             if container.file and container.image:
-                build_docker(".", container.file, container.image, container.args)
+                build_docker(str(self.config_path.parent), container.file, container.image, container.args)
         else:
             if checkout_only:
                 logging.info("Skipping Docker build in checkout mode")
@@ -542,7 +543,7 @@ class BspManager:
             container = resolved.container
             if container.file and container.image:
                 logging.info("Building Docker image for shell environment...")
-                build_docker(".", container.file, container.image, container.args)
+                build_docker(str(self.config_path.parent), container.file, container.image, container.args)
 
         self.prepare_build_directory(resolved.build_path)
 
@@ -660,6 +661,7 @@ class BspManager:
                     download_dir=downloads,
                     sstate_dir=sstate,
                     use_container=False,
+                    search_paths=[str(self.config_path.parent)],
                     env_manager=self.env_manager,
                 )
                 config_yaml = kas_mgr.export_kas_config(output_file)
