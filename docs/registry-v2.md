@@ -188,7 +188,7 @@ registry:
                                      # if omitted, the named environment's container is used
         path: build/imx8mp-adv       # build output directory
         includes:                    # device-specific KAS files
-          - kas/boards/imx8mp-adv.yml
+          - kas/boards/imx8mp-adv.yaml
         local_conf:                  # optional extra local.conf lines
           - "MACHINE_EXTRA_RDEPENDS += 'kernel-modules'"
         copy:                        # optional files to copy before the build
@@ -220,17 +220,17 @@ registry:
       isar_version: null             # optional Isar version string
       # environment: default         # optional – name of the environment to use
       includes:                      # base KAS files for this release
-        - kas/scarthgap.yml
+        - kas/scarthgap.yaml
       vendor_includes:               # optional vendor-specific overrides
         - vendor: advantech
           includes:
-            - kas/advantech/scarthgap-vendor.yml
+            - kas/advantech/scarthgap-vendor.yaml
 
     - slug: isar-v0.11
       description: "Isar v0.11"
       environment: isar-build        # use the 'isar-build' named environment
       includes:
-        - kas/isar/v0.11.yml
+        - kas/isar/v0.11.yaml
 ```
 
 The optional `environment` field names an entry from the top-level
@@ -260,7 +260,7 @@ registry:
     - slug: ota                      # unique identifier
       description: "Over-the-Air Update support via SWUpdate"
       includes:                      # feature-specific KAS files
-        - kas/features/ota.yml
+        - kas/features/ota.yaml
       local_conf:                    # lines appended to local.conf
         - "DISTRO_FEATURES:append = ' swupdate'"
       env: []                        # feature-specific env vars (optional)
@@ -274,7 +274,7 @@ registry:
         # vendor: []                 # optional vendor filter (empty = all)
         # soc_family: []             # optional soc_family filter
       includes:
-        - kas/features/secure-boot.yml
+        - kas/features/secure-boot.yaml
       env:
         - name: "SIGNING_KEY"
           value: "$ENV{SIGNING_KEY}"
@@ -373,7 +373,7 @@ registry:
         # No container specified – uses the active named environment's container
         path: build/imx8mp-adv
         includes:
-          - kas/boards/imx8mp-adv.yml
+          - kas/boards/imx8mp-adv.yaml
 
     - slug: qemuarm64
       description: "QEMU ARM64 (emulated)"
@@ -383,7 +383,7 @@ registry:
         container: "debian-bookworm"   # explicit override (still valid)
         path: build/qemuarm64
         includes:
-          - kas/qemu/qemuarm64.yml
+          - kas/qemu/qemuarm64.yaml
 
   releases:
     - slug: scarthgap
@@ -391,29 +391,29 @@ registry:
       yocto_version: "5.0"
       # No environment field → uses 'default' named environment
       includes:
-        - kas/scarthgap.yml
+        - kas/scarthgap.yaml
       vendor_includes:
         - vendor: advantech
           includes:
-            - kas/advantech/scarthgap-vendor.yml
+            - kas/advantech/scarthgap-vendor.yaml
 
     - slug: styhead
       description: "Yocto 5.1 (Styhead)"
       yocto_version: "5.1"
       includes:
-        - kas/styhead.yml
+        - kas/styhead.yaml
 
     - slug: isar-v0.11
       description: "Isar v0.11"
       environment: isar-build          # use the 'isar-build' named environment
       includes:
-        - kas/isar/v0.11.yml
+        - kas/isar/v0.11.yaml
 
   features:
     - slug: ota
       description: "Over-the-Air Update via SWUpdate"
       includes:
-        - kas/features/ota.yml
+        - kas/features/ota.yaml
       local_conf:
         - "DISTRO_FEATURES:append = ' swupdate'"
 
@@ -423,7 +423,7 @@ registry:
         soc_vendor:
           - nxp
       includes:
-        - kas/features/secure-boot.yml
+        - kas/features/secure-boot.yaml
       env:
         - name: "SIGNING_KEY"
           value: "$ENV{SIGNING_KEY}"
@@ -482,7 +482,7 @@ bsp build --device imx8mp-adv --release scarthgap --feature ota --feature secure
 bsp export imx8mp-adv-scarthgap
 
 # Export by components to a file
-bsp export --device imx8mp-adv --release scarthgap --feature ota --output /tmp/kas-config.yml
+bsp export --device imx8mp-adv --release scarthgap --feature ota --output /tmp/kas-config.yaml
 
 # Enter interactive shell for a preset
 bsp shell imx8mp-adv-scarthgap

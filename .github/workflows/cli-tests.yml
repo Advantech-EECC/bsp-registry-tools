@@ -73,4 +73,4 @@ jobs:
 
       - name: bsp missing registry exits non-zero
         run: |
-          bsp --registry /nonexistent/registry.yml list && exit 1 || true
+          bsp --registry /nonexistent/registry.yaml list && exit 1 || true

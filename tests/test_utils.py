@@ -25,13 +25,13 @@ from .conftest import INVALID_YAML
 
 class TestYamlParsing:
     def test_read_yaml_file_success(self, tmp_dir):
-        test_file = tmp_dir / "test.yml"
+        test_file = tmp_dir / "test.yaml"
         test_file.write_text("key: value")
         result = read_yaml_file(test_file)
         assert result == "key: value"
 
     def test_read_yaml_file_not_found(self, tmp_dir):
-        non_existent = tmp_dir / "nonexistent.yml"
+        non_existent = tmp_dir / "nonexistent.yaml"
         with pytest.raises(SystemExit):
             read_yaml_file(non_existent)
 
@@ -94,15 +94,15 @@ class TestYamlParsing:
         result = get_registry_from_yaml_file(registry_file)
         device = result.registry.devices[0]
         assert device.build.path == "build/test"
-        assert device.build.includes == ["test.yml"]
+        assert device.build.includes == ["test.yaml"]
         assert device.build.container == "ubuntu-22.04"
 
     def test_get_registry_missing_file(self, tmp_dir):
         with pytest.raises(SystemExit):
-            get_registry_from_yaml_file(tmp_dir / "missing.yml")
+            get_registry_from_yaml_file(tmp_dir / "missing.yaml")
 
     def test_get_registry_invalid_yaml(self, tmp_dir):
-        invalid_file = tmp_dir / "invalid.yml"
+        invalid_file = tmp_dir / "invalid.yaml"
         invalid_file.write_text(INVALID_YAML)
         with pytest.raises(SystemExit):
             get_registry_from_yaml_file(invalid_file)
@@ -115,7 +115,7 @@ specification:
 registry:
   bsp: []
 """
-        v1_file = tmp_dir / "v1.yml"
+        v1_file = tmp_dir / "v1.yaml"
         v1_file.write_text(v1_yaml)
         with pytest.raises(SystemExit):
             get_registry_from_yaml_file(v1_file)
@@ -126,7 +126,7 @@ registry:
   devices: []
   releases: []
 """
-        no_ver_file = tmp_dir / "no_ver.yml"
+        no_ver_file = tmp_dir / "no_ver.yaml"
         no_ver_file.write_text(no_ver_yaml)
         with pytest.raises(SystemExit):
             get_registry_from_yaml_file(no_ver_file)

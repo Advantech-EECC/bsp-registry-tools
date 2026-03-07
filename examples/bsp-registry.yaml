@@ -69,7 +69,7 @@ registry:
         container: "debian-bookworm"
         path: build/qemu-arm64
         includes:
-          - kas/poky/qemu/qemuarm64.yml
+          - kas/poky/qemu/qemuarm64.yaml
 
     - slug: qemuarm
       description: "QEMU ARM (32-bit, emulated)"
@@ -79,7 +79,7 @@ registry:
         container: "debian-bookworm"
         path: build/qemu-arm
         includes:
-          - kas/poky/qemu/qemuarm.yml
+          - kas/poky/qemu/qemuarm.yaml
 
     - slug: qemux86-64
       description: "QEMU x86-64 (emulated)"
@@ -87,9 +87,9 @@ registry:
       soc_vendor: intel
       build:
         container: "debian-bookworm"
-        path: build/qemu-x86-64
+        path: build/qemux86-64
         includes:
-          - kas/poky/qemu/qemux86-64.yml
+          - kas/poky/qemu/qemux86-64.yaml
 
     # Isar QEMU ARM64 – uses the isar-build environment (set at release level)
     - slug: qemuarm64-isar
@@ -114,20 +114,20 @@ registry:
       description: "Yocto 5.0 LTS (Scarthgap)"
       yocto_version: "5.0"
       includes:
-        - kas/poky/scarthgap.yml
+        - kas/poky/scarthgap.yaml
 
     - slug: styhead
       description: "Yocto 5.1 (Styhead)"
       yocto_version: "5.1"
       includes:
-        - kas/poky/styhead.yml
+        - kas/poky/styhead.yaml
 
     # Isar v0.11 – uses the isar-build named environment (Debian container + isar download cache)
     - slug: isar-v0.11
       description: "Isar v0.11"
       environment: isar-build
       includes:
-        - kas/isar/v0.11.yml
+        - kas/isar/distro/ubuntu-noble.yaml
 
   # =====================================
   # Features (optional add-ons)

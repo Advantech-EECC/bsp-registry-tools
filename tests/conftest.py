@@ -31,13 +31,13 @@ registry:
         container: "ubuntu-22.04"
         path: build/test
         includes:
-          - test.yml
+          - test.yaml
   releases:
     - slug: test-release
       description: "Test Release"
       yocto_version: "5.0"
       includes:
-        - test-base.yml
+        - test-base.yaml
   features: []
   bsp:
     - name: test-bsp
@@ -72,7 +72,7 @@ registry:
         container: "ubuntu-22.04"
         path: build/qemu-arm64
         includes:
-          - kas/qemu/qemuarm64.yml
+          - kas/qemu/qemuarm64.yaml
     - slug: qemu-x86-64
       description: "QEMU x86-64"
       vendor: qemu
@@ -81,13 +81,13 @@ registry:
         container: "ubuntu-22.04"
         path: build/qemu-x86-64
         includes:
-          - kas/qemu/qemux86-64.yml
+          - kas/qemu/qemux86-64.yaml
   releases:
     - slug: scarthgap
       description: "Yocto 5.0 LTS (Scarthgap)"
       yocto_version: "5.0"
       includes:
-        - kas/scarthgap.yml
+        - kas/scarthgap.yaml
   features: []
   bsp:
     - name: qemu-arm64
@@ -136,7 +136,7 @@ registry:
         container: "debian-bookworm"
         path: build/imx8-board
         includes:
-          - kas/imx8.yml
+          - kas/imx8.yaml
     - slug: qemu-arm64
       description: "QEMU ARM64"
       vendor: qemu
@@ -145,18 +145,18 @@ registry:
         container: "debian-bookworm"
         path: build/qemuarm64
         includes:
-          - kas/qemuarm64.yml
+          - kas/qemuarm64.yaml
   releases:
     - slug: scarthgap
       description: "Yocto 5.0 LTS"
       yocto_version: "5.0"
       includes:
-        - kas/scarthgap.yml
+        - kas/scarthgap.yaml
   features:
     - slug: ota
       description: "Over-the-Air Update support"
       includes:
-        - kas/features/ota.yml
+        - kas/features/ota.yaml
       local_conf:
         - "DISTRO_FEATURES:append = ' swupdate'"
     - slug: secure-boot
@@ -165,7 +165,7 @@ registry:
         soc_vendor:
           - nxp
       includes:
-        - kas/features/secure-boot.yml
+        - kas/features/secure-boot.yaml
       env:
         - name: "SIGNING_KEY"
           value: "$ENV{SIGNING_KEY}"
@@ -215,7 +215,7 @@ registry:
       build:
         path: build/qemuarm64
         includes:
-          - kas/qemuarm64.yml
+          - kas/qemuarm64.yaml
     - slug: isar-board
       description: "Isar Board"
       vendor: acme
@@ -223,18 +223,18 @@ registry:
       build:
         path: build/isar-board
         includes:
-          - kas/isar/board.yml
+          - kas/isar/board.yaml
   releases:
     - slug: scarthgap
       description: "Yocto 5.0 LTS"
       yocto_version: "5.0"
       includes:
-        - kas/scarthgap.yml
+        - kas/scarthgap.yaml
     - slug: isar-v0.11
       description: "Isar v0.11"
       environment: isar-env
       includes:
-        - kas/isar/v0.11.yml
+        - kas/isar/v0.11.yaml
   features: []
   bsp:
     - name: qemu-scarthgap
@@ -267,14 +267,14 @@ registry:
         container: "debian-bookworm"
         path: build/isar-qemu
         includes:
-          - kas/isar/qemu.yml
+          - kas/isar/qemu.yaml
         copy:
           - scripts/isar-runqemu.sh: build/isar-qemu/
   releases:
     - slug: isar-v0.11
       description: "Isar v0.11"
       includes:
-        - kas/isar/v0.11.yml
+        - kas/isar/v0.11.yaml
   features: []
   bsp:
     - name: isar-qemu-v0.11
@@ -307,7 +307,7 @@ registry:
         container: "isar-qemu-container"
         path: build/isar-qemu
         includes:
-          - kas/isar/qemu.yml
+          - kas/isar/qemu.yaml
     - slug: plain-device
       description: "Plain device"
       vendor: test
@@ -316,12 +316,12 @@ registry:
         container: "plain-container"
         path: build/plain
         includes:
-          - kas/plain.yml
+          - kas/plain.yaml
   releases:
     - slug: isar-v0.11
       description: "Isar v0.11"
       includes:
-        - kas/isar/v0.11.yml
+        - kas/isar/v0.11.yaml
   features: []
   bsp:
     - name: isar-qemu-v0.11
@@ -367,7 +367,7 @@ def registry_with_env_file(tmp_dir):
 @pytest.fixture
 def registry_with_features_file(tmp_dir):
     """Create a registry YAML file with features and compatibility rules."""
-    registry_path = tmp_dir / "bsp-registry.yml"
+    registry_path = tmp_dir / "bsp-registry.yaml"
     registry_path.write_text(REGISTRY_WITH_FEATURES_YAML)
     return registry_path
 
@@ -375,7 +375,7 @@ def registry_with_features_file(tmp_dir):
 @pytest.fixture
 def registry_with_named_env_file(tmp_dir):
     """Create a registry YAML file with named environments."""
-    registry_path = tmp_dir / "bsp-registry.yml"
+    registry_path = tmp_dir / "bsp-registry.yaml"
     registry_path.write_text(REGISTRY_WITH_NAMED_ENVIRONMENTS_YAML)
     return registry_path
 
@@ -383,7 +383,7 @@ def registry_with_named_env_file(tmp_dir):
 @pytest.fixture
 def registry_with_copy_file(tmp_dir):
     """Create a registry YAML file with copy entries in device build config."""
-    registry_path = tmp_dir / "bsp-registry.yml"
+    registry_path = tmp_dir / "bsp-registry.yaml"
     registry_path.write_text(REGISTRY_WITH_COPY_YAML)
     return registry_path
 
@@ -391,7 +391,7 @@ def registry_with_copy_file(tmp_dir):
 @pytest.fixture
 def registry_with_runtime_args_file(tmp_dir):
     """Create a registry YAML file with runtime_args on a container definition."""
-    registry_path = tmp_dir / "bsp-registry.yml"
+    registry_path = tmp_dir / "bsp-registry.yaml"
     registry_path.write_text(REGISTRY_WITH_RUNTIME_ARGS_YAML)
     return registry_path
 
@@ -409,7 +409,7 @@ machine: qemuarm64
 target:
   - core-image-minimal
 """
-    kas_path = tmp_dir / "test.yml"
+    kas_path = tmp_dir / "test.yaml"
     kas_path.write_text(kas_content)
     return kas_path
 
@@ -421,7 +421,7 @@ def kas_config_with_includes(tmp_dir):
 header:
   version: 14
   includes:
-    - include.yml
+    - include.yaml
 
 machine: qemuarm64
 """
@@ -431,8 +431,8 @@ header:
 
 distro: poky
 """
-    base_path = tmp_dir / "base.yml"
-    include_path = tmp_dir / "include.yml"
+    base_path = tmp_dir / "base.yaml"
+    include_path = tmp_dir / "include.yaml"
     base_path.write_text(base_content)
     include_path.write_text(include_content)
     return base_path, include_path

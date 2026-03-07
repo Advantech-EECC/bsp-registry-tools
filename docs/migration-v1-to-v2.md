@@ -110,8 +110,8 @@ registry:
         environment:
           container: "debian-bookworm"
         configuration:
-          - kas/scarthgap.yml
-          - kas/qemu/qemuarm64.yml
+          - kas/scarthgap.yaml
+          - kas/qemu/qemuarm64.yaml
 
     - name: poky-qemuarm64-styhead
       description: "Poky QEMU ARM64 Styhead (Yocto 5.1)"
@@ -124,8 +124,8 @@ registry:
         environment:
           container: "debian-bookworm"
         configuration:
-          - kas/styhead.yml
-          - kas/qemu/qemuarm64.yml
+          - kas/styhead.yaml
+          - kas/qemu/qemuarm64.yaml
 
     - name: poky-qemux86-64-scarthgap
       description: "Poky QEMU x86-64 Scarthgap (Yocto 5.0 LTS)"
@@ -138,8 +138,8 @@ registry:
         environment:
           container: "debian-bookworm"
         configuration:
-          - kas/scarthgap.yml
-          - kas/qemu/qemux86-64.yml
+          - kas/scarthgap.yaml
+          - kas/qemu/qemux86-64.yaml
 ```
 
 ### v2.0 Registry (after)
@@ -170,7 +170,7 @@ registry:
         container: "debian-bookworm"
         path: build/qemu-arm64        # shared base path; per-preset subdir no longer needed
         includes:
-          - kas/qemu/qemuarm64.yml
+          - kas/qemu/qemuarm64.yaml
 
     - slug: qemux86-64
       description: "QEMU x86-64 (emulated)"
@@ -180,20 +180,20 @@ registry:
         container: "debian-bookworm"
         path: build/qemu-x86-64
         includes:
-          - kas/qemu/qemux86-64.yml
+          - kas/qemu/qemux86-64.yaml
 
   releases:
     - slug: scarthgap
       description: "Yocto 5.0 LTS (Scarthgap)"
       yocto_version: "5.0"
       includes:
-        - kas/scarthgap.yml
+        - kas/scarthgap.yaml
 
     - slug: styhead
       description: "Yocto 5.1 (Styhead)"
       yocto_version: "5.1"
       includes:
-        - kas/styhead.yml
+        - kas/styhead.yaml
 
   features: []    # no features in this example
 

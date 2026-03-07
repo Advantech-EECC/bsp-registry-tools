@@ -54,11 +54,11 @@ class TestKasManager:
     def test_resolve_kas_file_not_found_exits(self, tmp_dir):
         import pytest
         manager = KasManager(
-            kas_files=[str(tmp_dir / "nonexistent.yml")],
+            kas_files=[str(tmp_dir / "nonexistent.yaml")],
             build_dir=str(tmp_dir / "build")
         )
         with pytest.raises(SystemExit):
-            manager._resolve_kas_file("totally_missing_file.yml")
+            manager._resolve_kas_file("totally_missing_file.yaml")
 
     def test_get_kas_files_string(self, kas_config_file):
         manager = KasManager(
@@ -69,8 +69,8 @@ class TestKasManager:
         assert str(kas_config_file) in result
 
     def test_get_kas_files_string_multiple(self, tmp_dir):
-        file1 = tmp_dir / "file1.yml"
-        file2 = tmp_dir / "file2.yml"
+        file1 = tmp_dir / "file1.yaml"
+        file2 = tmp_dir / "file2.yaml"
         file1.write_text("header:\n  version: 14\n")
         file2.write_text("header:\n  version: 14\n")
         manager = KasManager(
@@ -81,16 +81,16 @@ class TestKasManager:
         assert ":" in result
 
     def test_find_includes_in_yaml_top_level(self):
-        content = {"includes": ["file1.yml", "file2.yml"]}
+        content = {"includes": ["file1.yaml", "file2.yaml"]}
         manager = KasManager.__new__(KasManager)
         result = manager._find_includes_in_yaml(content)
-        assert result == ["file1.yml", "file2.yml"]
+        assert result == ["file1.yaml", "file2.yaml"]
 
     def test_find_includes_in_yaml_header(self):
-        content = {"header": {"includes": ["file1.yml"]}}
+        content = {"header": {"includes": ["file1.yaml"]}}
         manager = KasManager.__new__(KasManager)
         result = manager._find_includes_in_yaml(content)
-        assert result == ["file1.yml"]
+        assert result == ["file1.yaml"]
 
     def test_find_includes_in_yaml_empty(self):
         content = {"machine": "qemuarm64"}
@@ -100,13 +100,13 @@ class TestKasManager:
 
     def test_find_includes_both_sources(self):
         content = {
-            "includes": ["top.yml"],
-            "header": {"includes": ["header.yml"]}
+            "includes": ["top.yaml"],
+            "header": {"includes": ["header.yaml"]}
         }
         manager = KasManager.__new__(KasManager)
         result = manager._find_includes_in_yaml(content)
-        assert "top.yml" in result
-        assert "header.yml" in result
+        assert "top.yaml" in result
+        assert "header.yaml" in result
 
     def test_validate_kas_files_success(self, kas_config_file):
         manager = KasManager(

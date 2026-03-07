@@ -43,8 +43,8 @@ registry:
         environment:
           container: "ubuntu-22.04"   # or use docker: directly
         configuration:
-          - kas/scarthgap.yml
-          - kas/qemu/qemuarm64.yml
+          - kas/scarthgap.yaml
+          - kas/qemu/qemuarm64.yaml
 ```
 
 ## Sections

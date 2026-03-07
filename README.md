@@ -80,7 +80,7 @@ bsp --remote https://github.com/my-org/bsp-registry.git --branch dev list
 
 ### 1. Create a BSP Registry File
 
-Create a `bsp-registry.yaml` file (see [examples/bsp-registry.yml](examples/bsp-registry.yml) and [docs/registry-v2.md](docs/registry-v2.md)):
+Create a `bsp-registry.yaml` file (see [examples/bsp-registry.yaml](examples/bsp-registry.yaml) and [docs/registry-v2.md](docs/registry-v2.md)):
 
 ```yaml
 specification:
@@ -110,14 +110,14 @@ registry:
         container: "debian-bookworm"
         path: build/qemu-arm64
         includes:
-          - kas/qemu/qemuarm64.yml
+          - kas/qemu/qemuarm64.yaml
 
   releases:
     - slug: scarthgap
       description: "Yocto 5.0 LTS (Scarthgap)"
       yocto_version: "5.0"
       includes:
-        - kas/scarthgap.yml
+        - kas/scarthgap.yaml
 
   features: []
 
@@ -135,7 +135,7 @@ registry:
 # With an explicit registry file
 bsp --registry bsp-registry.yaml list
 
-# Or simply if bsp-registry.yml is in the current directory
+# Or simply if bsp-registry.yaml is in the current directory
 
 # List BSP presets
 bsp list
@@ -381,7 +381,7 @@ registry:
         container: "debian-bookworm"
         path: build/my-board
         includes:
-          - kas/boards/my-board.yml
+          - kas/boards/my-board.yaml
         local_conf: []           # optional extra local.conf lines
 ```
 
@@ -396,11 +396,11 @@ registry:
       description: "Yocto 5.0 LTS"
       yocto_version: "5.0"
       includes:
-        - kas/scarthgap.yml
+        - kas/scarthgap.yaml
       vendor_includes:           # optional vendor-specific overrides
         - vendor: acme
           includes:
-            - kas/acme/scarthgap-vendor.yml
+            - kas/acme/scarthgap-vendor.yaml
 ```
 
 ### `registry.features`
@@ -413,7 +413,7 @@ registry:
     - slug: ota
       description: "OTA Update via SWUpdate"
       includes:
-        - kas/features/ota.yml
+        - kas/features/ota.yaml
       local_conf:
         - "DISTRO_FEATURES:append = ' swupdate'"
 
@@ -422,7 +422,7 @@ registry:
       compatibility:
         soc_vendor: [nxp]        # empty list = all devices
       includes:
-        - kas/features/secure-boot.yml
+        - kas/features/secure-boot.yaml
       env:
         - name: "SIGNING_KEY"
           value: "$ENV{SIGNING_KEY}"
@@ -570,7 +570,7 @@ pip install build
 python -m build
 # Artifacts are in dist/
 =======
-│   ├── bsp-registry.yml  # Sample v2.0 registry for QEMU targets
+│   ├── bsp-registry.yaml  # Sample v2.0 registry for QEMU targets
 │   └── kas/              # KAS configuration files
 ├── pyproject.toml
 └── README.md

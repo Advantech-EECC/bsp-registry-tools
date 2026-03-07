@@ -51,7 +51,7 @@ class TestMainCli:
 
     def test_main_missing_registry_exits(self, tmp_dir):
         with patch("sys.argv", [
-            "bsp", "--registry", str(tmp_dir / "missing.yml"), "list"
+            "bsp", "--registry", str(tmp_dir / "missing.yaml"), "list"
         ]):
             exit_code = bsp.main()
         assert exit_code != 0
@@ -63,9 +63,9 @@ class TestMainCli:
         assert exit_code == 130
 
     def test_main_export_command_to_stdout(self, tmp_dir, capsys):
-        kas_file = tmp_dir / "test-base.yml"
+        kas_file = tmp_dir / "test-base.yaml"
         kas_file.write_text("header:\n  version: 14\nmachine: qemuarm64\n")
-        kas_file2 = tmp_dir / "test.yml"
+        kas_file2 = tmp_dir / "test.yaml"
         kas_file2.write_text("header:\n  version: 14\nmachine: qemuarm64\n")
         registry_content = f"""
 specification:
@@ -100,7 +100,7 @@ registry:
       release: test-release
       features: []
 """
-        registry_file = tmp_dir / "bsp-registry.yml"
+        registry_file = tmp_dir / "bsp-registry.yaml"
         registry_file.write_text(registry_content)
 
         with patch("sys.argv", [
@@ -112,7 +112,7 @@ registry:
 
     def test_main_build_by_components(self, tmp_dir):
         """bsp build --device <d> --release <r> should work."""
-        kas_file = tmp_dir / "test-base.yml"
+        kas_file = tmp_dir / "test-base.yaml"
         kas_file.write_text("header:\n  version: 14\nmachine: qemuarm64\n")
         registry_content = f"""
 specification:
@@ -140,7 +140,7 @@ registry:
   features: []
   bsp: []
 """
-        registry_file = tmp_dir / "bsp-registry.yml"
+        registry_file = tmp_dir / "bsp-registry.yaml"
         registry_file.write_text(registry_content)
 
         with patch("sys.argv", [

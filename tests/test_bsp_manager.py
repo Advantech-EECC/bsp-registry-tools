@@ -11,7 +11,7 @@ from .conftest import EMPTY_REGISTRY_YAML, REGISTRY_WITH_FEATURES_YAML
 
 class TestBspManagerInit:
     def test_init(self, tmp_dir):
-        manager = BspManager(config_path=str(tmp_dir / "bsp-registry.yml"))
+        manager = BspManager(config_path=str(tmp_dir / "bsp-registry.yaml"))
         assert manager.model is None
         assert manager.env_manager is None
         assert manager.containers == {}
@@ -24,7 +24,7 @@ class TestBspManagerInit:
         assert len(manager.model.registry.devices) == 1
 
     def test_load_configuration_missing_file(self, tmp_dir):
-        manager = BspManager(config_path=str(tmp_dir / "missing.yml"))
+        manager = BspManager(config_path=str(tmp_dir / "missing.yaml"))
         with pytest.raises(SystemExit):
             manager.load_configuration()
 
@@ -61,7 +61,7 @@ class TestBspManagerList:
         assert "Test BSP" in captured.out
 
     def test_list_bsp_empty_registry_does_not_exit(self, tmp_dir):
-        empty_file = tmp_dir / "empty.yml"
+        empty_file = tmp_dir / "empty.yaml"
         empty_file.write_text(EMPTY_REGISTRY_YAML)
         manager = BspManager(config_path=str(empty_file))
         manager.initialize()
@@ -120,7 +120,7 @@ registry:
   features: []
   bsp: []
 """
-        registry_file = tmp_dir / "bsp-registry.yml"
+        registry_file = tmp_dir / "bsp-registry.yaml"
         registry_file.write_text(no_containers_yaml)
         manager = BspManager(config_path=str(registry_file))
         manager.initialize()
@@ -207,11 +207,11 @@ class TestBspManagerResolver:
         manager = BspManager(config_path=str(registry_file))
         manager.initialize()
         resolved, _ = manager.resolver.resolve_preset("test-bsp")
-        # release includes: ["test-base.yml"]
-        # device includes: ["test.yml"]
-        assert "test-base.yml" in resolved.kas_files
-        assert "test.yml" in resolved.kas_files
-        assert resolved.kas_files.index("test-base.yml") < resolved.kas_files.index("test.yml")
+        # release includes: ["test-base.yaml"]
+        # device includes: ["test.yaml"]
+        assert "test-base.yaml" in resolved.kas_files
+        assert "test.yaml" in resolved.kas_files
+        assert resolved.kas_files.index("test-base.yaml") < resolved.kas_files.index("test.yaml")
 
     def test_resolver_feature_compatibility_ok(self, registry_with_features_file):
         manager = BspManager(config_path=str(registry_with_features_file))
@@ -305,7 +305,7 @@ class TestBspManagerMisc:
         registry_dir.mkdir()
         dockerfile = registry_dir / "Dockerfile.ubuntu"
         dockerfile.write_text("FROM ubuntu:22.04\n")
-        kas_file = registry_dir / "test.yml"
+        kas_file = registry_dir / "test.yaml"
         kas_file.write_text("header:\n  version: 14\nmachine: qemuarm64\n")
 
         registry_content = f"""
@@ -339,7 +339,7 @@ registry:
       release: test-release
       features: []
 """
-        registry_file = registry_dir / "bsp-registry.yml"
+        registry_file = registry_dir / "bsp-registry.yaml"
         registry_file.write_text(registry_content)
 
         manager = BspManager(config_path=str(registry_file))
@@ -365,7 +365,7 @@ registry:
         registry_dir.mkdir()
         dockerfile = registry_dir / "Dockerfile.ubuntu"
         dockerfile.write_text("FROM ubuntu:22.04\n")
-        kas_file = registry_dir / "test.yml"
+        kas_file = registry_dir / "test.yaml"
         kas_file.write_text("header:\n  version: 14\nmachine: qemuarm64\n")
 
         registry_content = f"""
@@ -399,7 +399,7 @@ registry:
       release: test-release
       features: []
 """
-        registry_file = registry_dir / "bsp-registry.yml"
+        registry_file = registry_dir / "bsp-registry.yaml"
         registry_file.write_text(registry_content)
 
         manager = BspManager(config_path=str(registry_file))
@@ -419,7 +419,7 @@ registry:
         """KasManager must include the registry file's directory in its search paths."""
         registry_dir = tmp_dir / "remote_cache"
         registry_dir.mkdir()
-        kas_file = registry_dir / "test.yml"
+        kas_file = registry_dir / "test.yaml"
         kas_file.write_text("header:\n  version: 14\nmachine: qemuarm64\n")
 
         registry_content = f"""
@@ -453,7 +453,7 @@ registry:
       release: test-release
       features: []
 """
-        registry_file = registry_dir / "bsp-registry.yml"
+        registry_file = registry_dir / "bsp-registry.yaml"
         registry_file.write_text(registry_content)
 
         manager = BspManager(config_path=str(registry_file))
@@ -550,7 +550,7 @@ class TestNamedEnvironmentsInResolver:
               features: []
               bsp: []
         """)
-        registry_path = tmp_dir / "bsp-registry.yml"
+        registry_path = tmp_dir / "bsp-registry.yaml"
         registry_path.write_text(yaml_content)
         manager = BspManager(config_path=str(registry_path))
         manager.initialize()
@@ -587,7 +587,7 @@ class TestNamedEnvironmentsInResolver:
               features: []
               bsp: []
         """)
-        registry_path = tmp_dir / "bsp-registry.yml"
+        registry_path = tmp_dir / "bsp-registry.yaml"
         registry_path.write_text(yaml_content)
         manager = BspManager(config_path=str(registry_path))
         manager.initialize()

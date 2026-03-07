@@ -105,10 +105,10 @@ class TestV2DataClasses:
         db = DeviceBuild(
             container="ubuntu-22.04",
             path="build/test",
-            includes=["kas/board.yml"],
+            includes=["kas/board.yaml"],
             local_conf=["MACHINE = 'myboard'"],
         )
-        assert db.includes == ["kas/board.yml"]
+        assert db.includes == ["kas/board.yaml"]
         assert db.local_conf == ["MACHINE = 'myboard'"]
 
     def test_device_minimal(self):
@@ -138,9 +138,9 @@ class TestV2DataClasses:
         assert d.soc_family == "imx8"
 
     def test_vendor_includes(self):
-        vi = VendorIncludes(vendor="advantech", includes=["kas/adv.yml"])
+        vi = VendorIncludes(vendor="advantech", includes=["kas/adv.yaml"])
         assert vi.vendor == "advantech"
-        assert vi.includes == ["kas/adv.yml"]
+        assert vi.includes == ["kas/adv.yaml"]
 
     def test_vendor_includes_defaults(self):
         vi = VendorIncludes(vendor="myvendor")
@@ -155,12 +155,12 @@ class TestV2DataClasses:
         assert r.vendor_includes == []
 
     def test_release_full(self):
-        vi = VendorIncludes(vendor="acme", includes=["kas/acme.yml"])
+        vi = VendorIncludes(vendor="acme", includes=["kas/acme.yaml"])
         r = Release(
             slug="scarthgap",
             description="Yocto 5.0 LTS",
             yocto_version="5.0",
-            includes=["kas/scarthgap.yml"],
+            includes=["kas/scarthgap.yaml"],
             vendor_includes=[vi],
         )
         assert r.yocto_version == "5.0"
@@ -190,7 +190,7 @@ class TestV2DataClasses:
             slug="secure-boot",
             description="Secure Boot",
             compatibility=fc,
-            includes=["kas/secure-boot.yml"],
+            includes=["kas/secure-boot.yaml"],
             local_conf=["SECURE_BOOT = '1'"],
             env=[EnvironmentVariable(name="SIGN_KEY", value="/path/to/key")],
         )
