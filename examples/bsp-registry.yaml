@@ -1,6 +1,6 @@
 specification:
   version: "2.0"
-  
+
 # Global environment variables for all builds (base layer – applied to every build)
 # Use $ENV{VAR_NAME} syntax to reference system environment variables
 environment:
@@ -12,7 +12,7 @@ environment:
 # A release can override by setting its "environment:" field to a different name.
 environments:
   default:
-    container: "debian-bookworm"
+    container: debian-bookworm
     variables:
       - name: "DL_DIR"
         value: "$ENV{HOME}/data/cache/downloads"
@@ -21,10 +21,12 @@ environments:
 
   # Isar uses its own Debian-based build system – point to a dedicated container
   isar-build:
-    container: "debian-bookworm-isar"
+    container: debian-trixie-isar
     variables:
       - name: "DL_DIR"
-        value: "$ENV{HOME}/data/cache/isar-downloads"
+        value: "$ENV{HOME}/data/cache/isar/downloads"
+      - name: "SSTATE_DIR"
+        value: "$ENV{HOME}/data/cache/isar/sstate"
 
 # Container definitions for build environments
 containers:
@@ -36,22 +38,15 @@ containers:
           value: "debian-bookworm"
         - name: "KAS_VERSION"
           value: "5.2"
-  - isar-debian-trixie:
+  - debian-trixie-isar:
       image: "bsp/registry/debian/isar/kas:5.2"
       file: Dockerfile.isar.debian
+      privileged: true
       args:
         - name: "DISTRO"
           value: "debian-trixie"
         - name: "KAS_VERSION"
           value: "5.2"
-
-
-  debian-bookworm-isar:
-    image: "ghcr.io/ilbers/isar:latest"
-    file: null
-    args: []
-    # SSH port forwarding and TUN device for networking in QEMU
-    runtime_args: "-p 2222:2222 --device=/dev/net/tun --cap-add=NET_ADMIN"
 
 registry:
 
@@ -99,10 +94,17 @@ registry:
       build:
         path: build/isar-qemu-arm64
         includes:
-          - kas/qemu/qemuarm64.yml
-        # Copy the Isar QEMU launch helper into the build directory before building
-        copy:
-          - isar/scripts/isar-runqemu.sh: build/isar-qemu-arm64/
+          - kas/isar/qemu/qemuarm64.yaml
+
+    # Isar QEMU x86-64 – uses the isar-build environment (set at release level)
+    - slug: qemux86-64-isar
+      description: "QEMU x86-64 (Isar / Debian-based)"
+      vendor: qemu
+      soc_vendor: intel
+      build:
+        path: build/isar-qemux86-64
+        includes:
+          - kas/isar/qemu/qemux86-64.yaml
 
   # =====================================
   # Releases
@@ -123,8 +125,9 @@ registry:
         - kas/poky/styhead.yaml
 
     # Isar v0.11 – uses the isar-build named environment (Debian container + isar download cache)
-    - slug: isar-v0.11
-      description: "Isar v0.11"
+    - slug: ubuntu-noble
+      description: "Ubuntu Noble (Isar v0.11)"
+      isar_version: "0.11"
       environment: isar-build
       includes:
         - kas/isar/distro/ubuntu-noble.yaml
@@ -178,5 +181,12 @@ registry:
     - name: isar-qemuarm64-v0.11
       description: "Isar v0.11 QEMU ARM64"
       device: qemuarm64-isar
-      release: isar-v0.11
+      release: ubuntu-noble
+      features: []
+
+    # --- QEMU X86-64 Isar ---
+    - name: isar-qemux86-64-v0.11
+      description: "Isar v0.11 QEMU x86-64"
+      device: qemux86-64-isar
+      release: ubuntu-noble
       features: []

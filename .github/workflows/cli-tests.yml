@@ -35,6 +35,9 @@ jobs:
           mkdir -p ~/data/cache/downloads
           mkdir -p ~/data/cache/sstate
 
+          mkdir -p ~/data/cache/isar/downloads
+          mkdir -p ~/data/cache/isar/sstate
+
       - name: bsp --help
         run: bsp --help
 
@@ -64,7 +67,7 @@ jobs:
       - name: bsp build --checkout (example registry)
         working-directory: examples
         run: |
-          bsp --verbose --registry bsp-registry.yaml build --checkout poky-qemux86-scarthgap 2>&1 | tee checkout-output.txt
+          bsp --verbose --registry bsp-registry.yaml build --checkout isar-qemux86-64 2>&1 | tee checkout-output.txt
           grep -q "isar-qemux86-64" checkout-output.txt
 
       - name: bsp --no-color list (example registry)
