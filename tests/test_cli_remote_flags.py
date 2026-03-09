@@ -119,7 +119,7 @@ class TestMainCliRemoteFlags:
         mock_fetch.assert_not_called()
         assert exit_code == 0
 
-    def test_local_bsp_registry_in_cwd_skips_fetcher(self, registry_file, tmp_dir, monkeypatch):
+    def test_local_bsp_registry_yaml_in_cwd_skips_fetcher(self, registry_file, tmp_dir, monkeypatch):
         """When bsp-registry.yaml exists in the CWD, remote fetch is skipped."""
         # Change working directory so the file is auto-detected
         monkeypatch.chdir(tmp_dir)
@@ -131,6 +131,55 @@ class TestMainCliRemoteFlags:
 
         mock_fetch.assert_not_called()
         assert exit_code == 0
+
+    def test_local_bsp_registry_yml_in_cwd_skips_fetcher(self, tmp_dir, monkeypatch):
+        """When bsp-registry.yml (no .yaml) exists in the CWD, remote fetch is skipped."""
+        from tests.conftest import MINIMAL_REGISTRY_YAML
+        registry_yml = tmp_dir / "bsp-registry.yml"
+        registry_yml.write_text(MINIMAL_REGISTRY_YAML)
+        monkeypatch.chdir(tmp_dir)
+        with patch("sys.argv", ["bsp", "list"]):
+            with patch(
+                "bsp.registry_fetcher.RegistryFetcher.fetch_registry"
+            ) as mock_fetch:
+                exit_code = bsp.main()
+
+        mock_fetch.assert_not_called()
+        assert exit_code == 0
+
+    def test_yaml_extension_takes_priority_over_yml(self, tmp_dir, monkeypatch, capsys):
+        """When both bsp-registry.yaml and bsp-registry.yml exist, .yaml is preferred."""
+        from tests.conftest import MINIMAL_REGISTRY_YAML
+        # Write different BSP names to distinguish which file was loaded
+        yaml_content = MINIMAL_REGISTRY_YAML.replace("test-bsp", "bsp-from-yaml")
+        yml_content = MINIMAL_REGISTRY_YAML.replace("test-bsp", "bsp-from-yml")
+        (tmp_dir / "bsp-registry.yaml").write_text(yaml_content)
+        (tmp_dir / "bsp-registry.yml").write_text(yml_content)
+        monkeypatch.chdir(tmp_dir)
+        with patch("sys.argv", ["bsp", "list"]):
+            exit_code = bsp.main()
+
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "bsp-from-yaml" in captured.out
+        assert "bsp-from-yml" not in captured.out
+
+    def test_local_flag_uses_yml_when_only_yml_exists(self, tmp_dir, monkeypatch, capsys):
+        """--local uses bsp-registry.yml when only that file is present."""
+        from tests.conftest import MINIMAL_REGISTRY_YAML
+        registry_yml = tmp_dir / "bsp-registry.yml"
+        registry_yml.write_text(MINIMAL_REGISTRY_YAML)
+        monkeypatch.chdir(tmp_dir)
+        with patch("sys.argv", ["bsp", "--local", "list"]):
+            with patch(
+                "bsp.registry_fetcher.RegistryFetcher.fetch_registry"
+            ) as mock_fetch:
+                exit_code = bsp.main()
+
+        mock_fetch.assert_not_called()
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "test-bsp" in captured.out
 
     def test_remote_and_branch_combined(self, registry_file):
         """--remote and --branch together are both forwarded to RegistryFetcher."""
