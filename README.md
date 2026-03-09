@@ -67,7 +67,7 @@ bsp --remote https://github.com/my-org/bsp-registry.git --branch dev list
 
 ### 1. Create a BSP Registry File
 
-Create a `bsp-registry.yaml` file (see [examples/bsp-registry.yaml](examples/bsp-registry.yaml)):
+Create a `bsp-registry.yaml` or `bsp-registry.yml` file (see [examples/bsp-registry.yaml](examples/bsp-registry.yaml)):
 
 ```yaml
 specification:
@@ -108,7 +108,7 @@ registry:
 # With an explicit registry file
 bsp --registry bsp-registry.yaml list
 
-# Or simply if bsp-registry.yaml is in the current directory
+# Or simply if bsp-registry.yaml (or bsp-registry.yml) is in the current directory
 bsp list
 ```
 
@@ -166,9 +166,10 @@ options:
 The tool determines which registry file to use in the following order:
 
 1. **`--registry <path>`** — explicit local file, remote fetch is skipped entirely.
-2. **`--local`** — use `./bsp-registry.yaml` in the current directory; no network access.
-3. **`bsp-registry.yaml` exists in the current directory** — backward-compatible auto-detect.
-4. **Otherwise** — clone/update the remote registry into `~/.cache/bsp/registry` via `RegistryFetcher`.
+2. **`--local`** — use `./bsp-registry.yaml` or `./bsp-registry.yml` in the current directory; no network access.
+3. **`bsp-registry.yaml` exists in the current directory** — auto-detect (preferred extension).
+4. **`bsp-registry.yml` exists in the current directory** — auto-detect (alternate extension).
+5. **Otherwise** — clone/update the remote registry into `~/.cache/bsp/registry` via `RegistryFetcher`.
 
 ### Global Options
 
