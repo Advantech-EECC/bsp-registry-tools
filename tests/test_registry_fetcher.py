@@ -12,6 +12,7 @@ from bsp.registry_fetcher import (
     DEFAULT_BRANCH,
     DEFAULT_REMOTE_URL,
     REGISTRY_FILENAME,
+    REGISTRY_FILENAMES,
     RegistryFetcher,
 )
 
@@ -71,6 +72,43 @@ class TestFetchRegistryClone:
         assert "clone" in clone_cmd
         assert "https://example.com/repo.git" in clone_cmd
 
+    def test_clones_and_finds_yml_extension(self, tmp_dir):
+        fetcher = _make_fetcher(tmp_dir)
+
+        def fake_clone(cmd, **kwargs):
+            # Simulate the side-effect of git clone: create .git and registry file with .yml
+            (fetcher.cache_dir / ".git").mkdir(parents=True, exist_ok=True)
+            (fetcher.cache_dir / "bsp-registry.yml").write_text("registry:\n  bsp: []\n")
+            return MagicMock(returncode=0)
+
+        with patch("subprocess.run", side_effect=fake_clone):
+            result = fetcher.fetch_registry(
+                repo_url="https://example.com/repo.git",
+                branch="main",
+                update=True,
+            )
+
+        assert result == fetcher.cache_dir / "bsp-registry.yml"
+
+    def test_yaml_takes_priority_over_yml(self, tmp_dir):
+        fetcher = _make_fetcher(tmp_dir)
+
+        def fake_clone(cmd, **kwargs):
+            # Simulate both .yaml and .yml files present
+            (fetcher.cache_dir / ".git").mkdir(parents=True, exist_ok=True)
+            (fetcher.cache_dir / "bsp-registry.yaml").write_text("registry:\n  bsp: []\n")
+            (fetcher.cache_dir / "bsp-registry.yml").write_text("registry:\n  bsp: []\n")
+            return MagicMock(returncode=0)
+
+        with patch("subprocess.run", side_effect=fake_clone):
+            result = fetcher.fetch_registry(
+                repo_url="https://example.com/repo.git",
+                branch="main",
+                update=True,
+            )
+
+        assert result == fetcher.cache_dir / "bsp-registry.yaml"
+
     def test_clone_failure_exits(self, tmp_dir):
         fetcher = _make_fetcher(tmp_dir)
         fetcher.cache_dir.mkdir(parents=True)
@@ -86,10 +124,10 @@ class TestFetchRegistryClone:
 # ---------------------------------------------------------------------------
 
 class TestFetchRegistryPull:
-    def _setup_cloned(self, fetcher: RegistryFetcher) -> None:
+    def _setup_cloned(self, fetcher: RegistryFetcher, filename: str = REGISTRY_FILENAME) -> None:
         """Create a minimal fake cloned repository."""
         (fetcher.cache_dir / ".git").mkdir(parents=True)
-        (fetcher.cache_dir / REGISTRY_FILENAME).write_text("registry:\n  bsp: []\n")
+        (fetcher.cache_dir / filename).write_text("registry:\n  bsp: []\n")
 
     def test_pulls_when_already_cloned_and_update_true(self, tmp_dir):
         fetcher = _make_fetcher(tmp_dir)
@@ -135,6 +173,15 @@ class TestFetchRegistryPull:
         with patch("subprocess.run", side_effect=error):
             with pytest.raises(SystemExit):
                 fetcher.fetch_registry(update=True)
+
+    def test_finds_yml_extension_after_pull(self, tmp_dir):
+        fetcher = _make_fetcher(tmp_dir)
+        self._setup_cloned(fetcher, filename="bsp-registry.yml")
+
+        with patch("subprocess.run", return_value=MagicMock(returncode=0)):
+            result = fetcher.fetch_registry(update=True)
+
+        assert result == fetcher.cache_dir / "bsp-registry.yml"
 
 
 # ---------------------------------------------------------------------------

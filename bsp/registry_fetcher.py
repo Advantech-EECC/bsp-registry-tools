@@ -10,7 +10,8 @@ from pathlib import Path
 DEFAULT_REMOTE_URL = "https://github.com/Advantech-EECC/bsp-registry.git"
 DEFAULT_BRANCH = "main"
 DEFAULT_CACHE_DIR = Path.home() / ".cache" / "bsp" / "registry"
-REGISTRY_FILENAME = "bsp-registry.yaml"
+REGISTRY_FILENAMES = ["bsp-registry.yaml", "bsp-registry.yml"]
+REGISTRY_FILENAME = REGISTRY_FILENAMES[0]
 
 
 class RegistryFetcher:
@@ -46,7 +47,8 @@ class RegistryFetcher:
             update: When ``True`` (default) run ``git pull`` on an existing clone.
 
         Returns:
-            Path to the local ``bsp-registry.yaml`` file inside the cache directory.
+            Path to the local ``bsp-registry.yaml`` (or ``bsp-registry.yml``) file
+            inside the cache directory.
 
         Raises:
             SystemExit: If git operations fail or the registry file is not found.
@@ -60,10 +62,15 @@ class RegistryFetcher:
         else:
             self.logger.info("Using cached BSP registry (no-update requested)")
 
-        registry_file = self.cache_dir / REGISTRY_FILENAME
-        if not registry_file.is_file():
+        registry_file = next(
+            (p for name in REGISTRY_FILENAMES
+             for p in [self.cache_dir / name] if p.is_file()),
+            None,
+        )
+        if registry_file is None:
             self.logger.error(
-                "BSP registry file not found in cloned repository: %s", registry_file
+                "BSP registry file not found in cloned repository: %s",
+                " or ".join(str(self.cache_dir / name) for name in REGISTRY_FILENAMES),
             )
             sys.exit(1)
 
