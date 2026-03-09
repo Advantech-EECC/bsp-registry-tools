@@ -401,6 +401,9 @@ class BspManager:
             use_container=use_container,
             container_image=container_image,
             container_runtime_args=container_runtime_args,
+            container_privileged=(
+                resolved.container.privileged if resolved.container and use_container else False
+            ),
             search_paths=[str(self.config_path.parent)],
             env_manager=env_mgr,
         )

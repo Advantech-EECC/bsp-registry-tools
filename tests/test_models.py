@@ -70,12 +70,22 @@ class TestSharedDataClasses:
         assert docker.image == "my-image:latest"
         assert docker.file is None
         assert docker.args == []
+        assert docker.privileged is False
 
     def test_docker_with_args(self):
         args = [DockerArg(name="VERSION", value="22.04")]
         docker = Docker(image="my-image", file="Dockerfile", args=args)
         assert len(docker.args) == 1
         assert docker.args[0].name == "VERSION"
+
+    def test_docker_privileged_default_false(self):
+        docker = Docker(image="my-image:latest", file=None)
+        assert docker.privileged is False
+
+    def test_docker_privileged_can_be_set_true(self):
+        docker = Docker(image="my-image:latest", file=None, privileged=True)
+        assert docker.privileged is True
+
 
     def test_specification(self):
         spec = Specification(version="2.0")

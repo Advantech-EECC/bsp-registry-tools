@@ -211,6 +211,21 @@ class TestConvertContainersListToDict:
         assert result == {}
 
 
+    def test_container_privileged_default_false(self):
+        containers_list = [
+            {"my-container": {"image": "my-image:latest", "file": "Dockerfile", "args": []}},
+        ]
+        result = convert_containers_list_to_dict(containers_list)
+        assert result["my-container"].privileged is False
+
+    def test_container_privileged_true(self):
+        containers_list = [
+            {"isar-container": {"image": "isar:latest", "file": "Dockerfile", "args": [], "privileged": True}},
+        ]
+        result = convert_containers_list_to_dict(containers_list)
+        assert result["isar-container"].privileged is True
+
+
 # =============================================================================
 # Tests for named environments in registry parsing
 # =============================================================================
@@ -258,9 +273,7 @@ class TestNamedEnvironmentParsing:
         assert scarthgap.environment is None
 
     def test_registry_without_environments_key(self, registry_file):
-        """Registries without an environments section should still parse fine."""
         result = get_registry_from_yaml_file(registry_file)
-        # Default is an empty dict (not None)
         assert result.environments == {}
 
 

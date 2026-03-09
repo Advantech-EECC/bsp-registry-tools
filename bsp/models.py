@@ -63,11 +63,13 @@ class Docker:
                       ``run`` command (e.g. ``-p 2222:2222
                       --device=/dev/net/tun --cap-add=NET_ADMIN``).
                       Passed to kas-container via ``KAS_CONTAINER_ARGS``.
+        privileged: Run container in privileged mode (enables --isar for kas-container)
     """
     image: Optional[str]
     file: Optional[str]
     args: List[DockerArg] = field(default_factory=empty_list)
     runtime_args: Optional[str] = None
+    privileged: bool = False
 
 
 @dataclass

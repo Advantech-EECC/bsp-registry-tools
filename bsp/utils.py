@@ -97,7 +97,8 @@ def convert_containers_list_to_dict(containers_list: List[Dict[str, Any]]) -> Di
                     image=container_config.get('image'),
                     file=container_config.get('file'),
                     args=[DockerArg(name=arg['name'], value=arg['value'])
-                          for arg in container_config.get('args', [])]
+                          for arg in container_config.get('args', [])],
+                    privileged=container_config.get('privileged', False)
                 )
             else:
                 logging.warning(f"Invalid container configuration for {container_name}, skipping")

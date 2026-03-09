@@ -43,6 +43,25 @@ class TestKasManager:
         )
         assert manager._get_kas_command() == ["kas-container"]
 
+    def test_get_kas_command_container_privileged(self, kas_config_file):
+        manager = KasManager(
+            kas_files=[str(kas_config_file)],
+            build_dir=str(kas_config_file.parent / "build"),
+            use_container=True,
+            container_privileged=True
+        )
+        cmd = manager._get_kas_command()
+        assert cmd == ["kas-container", "--isar"]
+
+    def test_get_kas_command_privileged_not_applied_without_container(self, kas_config_file):
+        manager = KasManager(
+            kas_files=[str(kas_config_file)],
+            build_dir=str(kas_config_file.parent / "build"),
+            use_container=False,
+            container_privileged=True
+        )
+        assert manager._get_kas_command() == ["kas"]
+
     def test_resolve_kas_file_absolute(self, kas_config_file):
         manager = KasManager(
             kas_files=[str(kas_config_file)],

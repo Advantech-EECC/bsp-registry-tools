@@ -41,7 +41,7 @@ containers:
   - debian-trixie-isar:
       image: "bsp/registry/debian/isar/kas:5.2"
       file: Dockerfile.isar.debian
-      privileged: true
+      privileged: true    # Run container in privileged mode (required for ISAR builds)
       args:
         - name: "DISTRO"
           value: "debian-trixie"
@@ -132,6 +132,13 @@ registry:
       includes:
         - kas/isar/distro/ubuntu-noble.yaml
 
+    - slug: debian-trixie-isar
+      description: "Debian Trixie (Isar v0.11)"
+      isar_version: "0.11"
+      environment: isar-build
+      includes:
+        - kas/isar/distro/debian-trixie.yaml
+
   # =====================================
   # Features (optional add-ons)
   # =====================================
@@ -186,7 +193,19 @@ registry:
 
     # --- QEMU X86-64 Isar ---
     - name: isar-qemux86-64-v0.11
-      description: "Isar v0.11 QEMU x86-64"
+      description: "Isar v0.11 QEMU x86-64 (Ubuntu Noble)"
       device: qemux86-64-isar
       release: ubuntu-noble
+      features: []
+
+    - name: isar-qemux86-64-debian-trixie-v0.11
+      description: "Isar v0.11 QEMU x86-64 (Debian Trixie)"
+      device: qemux86-64-isar
+      release: debian-trixie-isar
+      features: []
+
+    - name: isar-qemuarm64-debian-trixie-v0.11
+      description: "Isar v0.11 QEMU ARM64 (Debian Trixie)"
+      device: qemuarm64-isar
+      release: debian-trixie-isar
       features: []
