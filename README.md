@@ -71,35 +71,75 @@ Create a `bsp-registry.yaml` or `bsp-registry.yml` file (see [examples/bsp-regis
 
 ```yaml
 specification:
-  version: "1.0"
+  version: "2.0"
 
 environment:
-  - name: "DL_DIR"
-    value: "$ENV{HOME}/yocto-cache/downloads"
-  - name: "SSTATE_DIR"
-    value: "$ENV{HOME}/yocto-cache/sstate"
+  - name: "GITCONFIG_FILE"
+    value: "$ENV{HOME}/.gitconfig"
+
+# Named environment: container + variables used for all builds by default
+environments:
+  default:
+    container: "debian-bookworm"
+    variables:
+      - name: "DL_DIR"
+        value: "$ENV{HOME}/yocto-cache/downloads"
+      - name: "SSTATE_DIR"
+        value: "$ENV{HOME}/yocto-cache/sstate"
 
 containers:
-  - debian-bookworm:
-      image: "bsp/registry/debian/kas:5.1"
-      file: Dockerfile
-      args:
-        - name: "DISTRO"
-          value: "debian-bookworm"
-        - name: "KAS_VERSION"
-          value: "5.1"
+  debian-bookworm:
+    image: "bsp/registry/debian/kas:5.1"
+    file: Dockerfile
+    args:
+      - name: "DISTRO"
+        value: "debian-bookworm"
+      - name: "KAS_VERSION"
+        value: "5.1"
 
 registry:
+  # frameworks and distro define the build system hierarchy (optional but recommended)
+  frameworks:
+    - slug: yocto
+      description: "Yocto Project build system"
+      vendor: "Yocto Project"
+      includes:
+        - kas/yocto/yocto.yaml
+
+  distro:
+    - slug: poky
+      description: "Poky (Yocto Project reference distro)"
+      framework: yocto     # links distro to a framework for feature compatibility checks
+      includes:
+        - kas/yocto/distro/poky.yaml
+
+  # devices define hardware targets (KAS includes listed flat, no nested build: block)
+  devices:
+    - slug: qemuarm64
+      description: "QEMU ARM64 (emulated)"
+      vendor: qemu
+      soc_vendor: arm
+      includes:
+        - kas/qemu/qemuarm64.yaml
+
+  releases:
+    - slug: scarthgap
+      description: "Yocto 5.0 LTS (Scarthgap)"
+      distro: poky
+      yocto_version: "5.0"
+      includes:
+        - kas/scarthgap.yaml
+
+  # bsp presets name a device + release + features combination
   bsp:
     - name: poky-qemuarm64-scarthgap
       description: "Poky QEMU ARM64 Scarthgap (Yocto 5.0 LTS)"
+      device: qemuarm64
+      release: scarthgap
+      features: []
       build:
-        path: build/qemu-arm64-scarthgap
-        environment:
-          container: "debian-bookworm"
-        configuration:
-          - kas/scarthgap.yaml
-          - kas/qemu/qemuarm64.yaml
+        container: "debian-bookworm"
+        path: build/poky-qemuarm64-scarthgap
 ```
 
 ### 2. List Available BSPs
@@ -261,13 +301,13 @@ bsp export poky-qemuarm64-scarthgap --output exported-config.yaml
 
 ## Registry Configuration Reference
 
-The BSP registry is a YAML file with the following top-level sections:
+The BSP registry is a YAML file following **schema v2.0**.  See [docs/registry-v2.md](docs/registry-v2.md) for the full reference.  Key top-level sections:
 
 ### `specification`
 
 ```yaml
 specification:
-  version: "1.0"
+  version: "2.0"
 ```
 
 ### `environment`
@@ -284,13 +324,18 @@ environment:
     value: "$ENV{HOME}/yocto-cache/sstate"
 ```
 
-**Supported variables:**
+### `environments`
 
-| Variable | Description |
-|----------|-------------|
-| `DL_DIR` | Yocto downloads cache directory |
-| `SSTATE_DIR` | Yocto shared state cache directory |
-| `GITCONFIG_FILE` | Git configuration file path |
+Named environments bundle a container reference and environment variables together.  The special name `"default"` is used by any release that does not explicitly name an environment.
+
+```yaml
+environments:
+  default:
+    container: "debian-bookworm"
+    variables:
+      - name: "DL_DIR"
+        value: "$ENV{HOME}/yocto-cache/downloads"
+```
 
 ### `containers`
 
@@ -298,25 +343,20 @@ Docker container definitions for build environments:
 
 ```yaml
 containers:
-  - ubuntu-22.04:
-      image: "my-registry/ubuntu-22.04/kas:4.7"
-      file: Dockerfile.ubuntu
-      args:
-        - name: "DISTRO"
-          value: "ubuntu:22.04"
-        - name: "KAS_VERSION"
-          value: "4.7"
-  - ubuntu-20.04:
-      image: "my-registry/ubuntu-20.04/kas:4.7"
-      file: Dockerfile.ubuntu
-      args:
-        - name: "DISTRO"
-          value: "ubuntu:20.04"
-  - isar-container:
-      image: "my-registry/isar/kas:4.7"
-      file: Dockerfile.isar
-      args: []
-      privileged: true    # Run container in privileged mode (required for ISAR builds)
+  debian-bookworm:
+    image: "my-registry/debian/kas:5.1"
+    file: Dockerfile
+    args:
+      - name: "DISTRO"
+        value: "debian-bookworm"
+      - name: "KAS_VERSION"
+        value: "5.1"
+  isar-container:
+    image: "my-registry/isar/kas:5.1"
+    file: Dockerfile.isar
+    args: []
+    privileged: true    # Run container in privileged mode (required for ISAR builds)
+    runtime_args: "-p 2222:2222"  # Extra flags passed to the container engine
 ```
 
 **Container fields:**
@@ -326,31 +366,54 @@ containers:
 | `image` | string | — | Docker image name/tag |
 | `file` | string | — | Path to Dockerfile for building the image |
 | `args` | list | `[]` | Docker build arguments (`name`/`value` pairs) |
-| `privileged` | boolean | `false` | Run container with elevated privileges. Required for ISAR (Debian-based) builds. Adds `--isar` to `kas-container`, which enables the `--privileged` Docker flag. |
+| `privileged` | boolean | `false` | Run container with elevated privileges. Required for ISAR builds. |
+| `runtime_args` | string | — | Extra flags appended to the container engine `run` invocation (e.g. port-forwarding, `--device` access). Forwarded via `KAS_CONTAINER_ARGS`. |
+
+### `registry.devices`
+
+Hardware device/board definitions:
+
+```yaml
+registry:
+  devices:
+    - slug: qemuarm64
+      description: "QEMU ARM64 (emulated)"
+      vendor: qemu
+      soc_vendor: arm
+      includes:
+        - kas/qemu/qemuarm64.yaml
+```
+
+### `registry.releases`
+
+Yocto/Isar release definitions referencing a distro:
+
+```yaml
+registry:
+  releases:
+    - slug: scarthgap
+      description: "Yocto 5.0 LTS (Scarthgap)"
+      distro: poky
+      yocto_version: "5.0"
+      includes:
+        - kas/scarthgap.yaml
+```
 
 ### `registry.bsp`
 
-List of BSP definitions:
+Named presets — device + release + optional features:
 
 ```yaml
 registry:
   bsp:
-    - name: my-bsp-name           # Unique identifier
-      description: "My BSP"       # Human-readable description
-      os:                         # Optional OS information
-        name: linux
-        build_system: yocto
-        version: "5.0"
-      build:
-        path: build/my-bsp        # Build output directory
-        environment:
-          container: "ubuntu-22.04"   # Reference to containers section
-          # OR use direct Docker configuration:
-          # docker:
-          #   image: "my-image:latest"
-        configuration:            # KAS configuration files (in order)
-          - kas/scarthgap.yaml
-          - kas/qemu/qemuarm64.yaml
+    - name: poky-qemuarm64-scarthgap
+      description: "Poky QEMU ARM64 Scarthgap (Yocto 5.0 LTS)"
+      device: qemuarm64
+      release: scarthgap
+      features: []
+      build:              # optional: override container and/or output path
+        container: "debian-bookworm"
+        path: build/poky-qemuarm64-scarthgap
 ```
 
 ## KAS Configuration Files
@@ -478,12 +541,17 @@ bsp-registry-tools/
 │   ├── kas_manager.py        # KAS build system integration
 │   ├── environment.py        # Environment variable management
 │   ├── path_resolver.py      # Path utilities
-│   ├── models.py             # Dataclass models
+│   ├── models.py             # Dataclass models (v2.0 schema)
+│   ├── resolver.py           # V2 resolver: device + release + features → ResolvedConfig
 │   ├── utils.py              # YAML / Docker utilities
 │   └── exceptions.py         # Custom exceptions
 ├── pyproject.toml            # Package configuration
 ├── README.md                 # This file
 ├── LICENSE                   # Apache 2.0 License
+├── docs/
+│   ├── registry-v2.md        # Full v2.0 schema reference
+│   ├── registry-v1.md        # Legacy v1.0 schema reference
+│   └── migration-v1-to-v2.md # Migration guide from v1 to v2
 ├── tests/
 │   ├── conftest.py
 │   ├── test_bsp_manager.py
@@ -491,14 +559,9 @@ bsp-registry-tools/
 │   ├── test_registry_fetcher.py
 │   └── ...
 ├── examples/
-│   ├── bsp-registry.yaml      # Sample BSP registry for QEMU targets
+│   ├── bsp-registry.yaml      # Sample v2.0 BSP registry for QEMU targets
 │   └── kas/
-│       ├── scarthgap.yaml     # Yocto Scarthgap base config
-│       ├── styhead.yaml       # Yocto Styhead base config
-│       └── qemu/
-│           ├── qemuarm64.yaml  # QEMU ARM64 machine config
-│           ├── qemux86-64.yaml # QEMU x86-64 machine config
-│           └── qemuarm.yaml    # QEMU ARM machine config
+│       └── ...                # KAS configuration files
 └── .github/
     └── workflows/
         ├── tests.yaml         # CI: run tests on push/PR
@@ -552,12 +615,16 @@ python -m build
 
 | Class | Description |
 |-------|-------------|
-| `RegistryRoot` | Root registry container |
-| `Registry` | Contains list of BSP definitions |
-| `BSP` | Single BSP definition |
-| `BuildSetup` | Build configuration (path, environment, KAS files) |
-| `BuildEnvironment` | Docker/container settings |
-| `Docker` | Docker image, build arg, and privileged mode configuration |
+| `RegistryRoot` | Root registry container (specification, registry, containers, environments) |
+| `Registry` | Contains devices, releases, features, presets, frameworks, and distros |
+| `Device` | Hardware device/board definition (slug, vendor, soc_vendor, includes) |
+| `Release` | Yocto/Isar release definition (slug, distro reference, includes) |
+| `Feature` | Optional BSP feature (slug, includes, compatibility constraints) |
+| `BspPreset` | Named preset combining device + release + features |
+| `Framework` | Build-system framework definition (e.g. Yocto, Isar) |
+| `Distro` | Linux distribution definition (e.g. Poky, Isar distro) |
+| `Docker` | Docker image, build arg, privileged mode, and runtime_args configuration |
+| `NamedEnvironment` | Named environment bundling a container reference and variables |
 | `EnvironmentVariable` | Name/value pair with `$ENV{}` expansion support |
 
 ### Exceptions
