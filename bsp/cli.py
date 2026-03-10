@@ -219,7 +219,7 @@ def main() -> int:
             logging.info("Using remote registry cached at: %s", registry_path)
 
         # Initialize and run BSP manager
-        bsp_mgr = BspManager(registry_path)
+        bsp_mgr = BspManager(registry_path, verbose=args.verbose)
         bsp_mgr.initialize()
 
         # ----------------------------------------------------------------

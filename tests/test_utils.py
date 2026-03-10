@@ -2,7 +2,9 @@
 Tests for YAML parsing utilities and container list-to-dict conversion (v2.0).
 """
 
+import subprocess
 import pytest
+from unittest.mock import patch, MagicMock
 
 from bsp import (
     Docker,
@@ -12,6 +14,7 @@ from bsp import (
     get_registry_from_yaml_file,
     convert_containers_list_to_dict,
 )
+from bsp.utils import build_docker
 from .conftest import INVALID_YAML, MINIMAL_REGISTRY_YAML, REGISTRY_WITH_ENV_YAML
 
 
@@ -233,3 +236,94 @@ class TestConvertContainersListToDict:
         poky = next(d for d in result.registry.distro if d.slug == "poky")
         assert poky.vendor == "yocto"
         assert "kas/poky/distro/poky.yaml" in poky.includes
+
+
+# =============================================================================
+# Tests for build_docker verbose/quiet behaviour
+# =============================================================================
+
+class TestBuildDocker:
+    """Tests for the build_docker helper, focusing on verbose vs quiet output."""
+
+    def _make_dockerfile_dir(self, tmp_path):
+        """Create a minimal Dockerfile in tmp_path and return the dir path as str."""
+        dockerfile = tmp_path / "Dockerfile"
+        dockerfile.write_text("FROM scratch\n")
+        return str(tmp_path)
+
+    @patch("bsp.utils.subprocess.run")
+    def test_quiet_mode_shows_status_message(self, mock_run, tmp_path, capsys):
+        """In quiet mode (verbose=False) a 'Preparing docker environment' line is printed."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        dockerfile_dir = self._make_dockerfile_dir(tmp_path)
+
+        build_docker(dockerfile_dir, "Dockerfile", "test-image:latest", verbose=False)
+
+        captured = capsys.readouterr()
+        assert "Preparing docker environment" in captured.out
+        assert "test-image:latest" in captured.out
+
+    @patch("bsp.utils.subprocess.run")
+    def test_quiet_mode_captures_output(self, mock_run, tmp_path, capsys):
+        """In quiet mode subprocess.run is called with capture_output=True."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        dockerfile_dir = self._make_dockerfile_dir(tmp_path)
+
+        build_docker(dockerfile_dir, "Dockerfile", "test-image:latest", verbose=False)
+
+        _, kwargs = mock_run.call_args
+        assert kwargs.get("capture_output") is True
+
+    @patch("bsp.utils.subprocess.run")
+    def test_verbose_mode_no_capture(self, mock_run, tmp_path, capsys):
+        """In verbose mode subprocess.run is called WITHOUT capture_output."""
+        mock_run.return_value = MagicMock(returncode=0)
+        dockerfile_dir = self._make_dockerfile_dir(tmp_path)
+
+        build_docker(dockerfile_dir, "Dockerfile", "test-image:latest", verbose=True)
+
+        _, kwargs = mock_run.call_args
+        assert not kwargs.get("capture_output", False)
+
+    @patch("bsp.utils.subprocess.run")
+    def test_verbose_mode_no_status_message(self, mock_run, tmp_path, capsys):
+        """In verbose mode the quiet status line is NOT printed."""
+        mock_run.return_value = MagicMock(returncode=0)
+        dockerfile_dir = self._make_dockerfile_dir(tmp_path)
+
+        build_docker(dockerfile_dir, "Dockerfile", "test-image:latest", verbose=True)
+
+        captured = capsys.readouterr()
+        assert "Preparing docker environment" not in captured.out
+
+    @patch("bsp.utils.subprocess.run")
+    def test_default_is_quiet(self, mock_run, tmp_path, capsys):
+        """Default call (no verbose arg) behaves the same as verbose=False."""
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        dockerfile_dir = self._make_dockerfile_dir(tmp_path)
+
+        build_docker(dockerfile_dir, "Dockerfile", "test-image:latest")
+
+        captured = capsys.readouterr()
+        assert "Preparing docker environment" in captured.out
+
+    @patch("bsp.utils.subprocess.run")
+    def test_build_failure_exits(self, mock_run, tmp_path):
+        """A non-zero return code from docker build causes SystemExit."""
+        mock_run.side_effect = subprocess.CalledProcessError(
+            returncode=1, cmd=["docker", "build"], stderr="some error"
+        )
+        dockerfile_dir = self._make_dockerfile_dir(tmp_path)
+
+        with pytest.raises(SystemExit):
+            build_docker(dockerfile_dir, "Dockerfile", "test-image:latest", verbose=False)
+
+    def test_missing_dockerfile_dir_exits(self, tmp_path):
+        """A missing Dockerfile directory causes SystemExit before docker is called."""
+        with pytest.raises(SystemExit):
+            build_docker(str(tmp_path / "nonexistent"), "Dockerfile", "test:latest")
+
+    def test_missing_dockerfile_exits(self, tmp_path):
+        """A missing Dockerfile inside an existing directory causes SystemExit."""
+        with pytest.raises(SystemExit):
+            build_docker(str(tmp_path), "Dockerfile", "test:latest")

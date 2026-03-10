@@ -165,7 +165,8 @@ def get_registry_from_yaml_file(filename: Path) -> RegistryRoot:
 # =============================================================================
 
 def build_docker(dockerfile_dir: str, dockerfile: str, tag: str,
-                 build_args: Optional[List[DockerArg]] = None) -> None:
+                 build_args: Optional[List[DockerArg]] = None,
+                 verbose: bool = False) -> None:
     """
     Build Docker image from Dockerfile with comprehensive validation.
 
@@ -180,6 +181,8 @@ def build_docker(dockerfile_dir: str, dockerfile: str, tag: str,
         dockerfile: Dockerfile name (e.g., 'Dockerfile')
         tag: Image tag for the built image (e.g., 'my-bsp:latest')
         build_args: List of Docker build arguments for parameterized builds
+        verbose: If True, stream docker build output live; otherwise show
+                 only a status message and suppress build output
 
     Raises:
         SystemExit: If Docker build fails, prerequisites are missing, or Docker is unavailable
@@ -213,13 +216,24 @@ def build_docker(dockerfile_dir: str, dockerfile: str, tag: str,
 
         logging.info(f"Running: {' '.join(cmd)}")
 
-        # Execute build command with real-time output capture
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        if verbose:
+            # Stream docker build output live so the user can follow progress
+            subprocess.run(cmd, check=True)
+        else:
+            # Quiet mode: show a brief status line, then suppress build output
+            print(f"Preparing docker environment: {tag} ...")
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            if result.stdout:
+                logging.debug(result.stdout)
+            if result.stderr:
+                logging.debug(result.stderr)
+
         logging.info("Docker build completed successfully")
 
     except subprocess.CalledProcessError as e:
         logging.error(f"Docker build failed with return code {e.returncode}")
-        logging.error(f"Error output: {e.stderr}")
+        if e.stderr:
+            logging.error(f"Error output: {e.stderr}")
         sys.exit(1)
     except Exception as e:
         logging.error(f"Unexpected error during Docker build: {e}")

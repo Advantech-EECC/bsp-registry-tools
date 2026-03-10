@@ -31,14 +31,16 @@ class BspManager:
     shell access, and configuration export operations with container support.
     """
 
-    def __init__(self, config_path: str = "bsp-registry.yaml"):
+    def __init__(self, config_path: str = "bsp-registry.yaml", verbose: bool = False):
         """
         Initialize BSP manager.
 
         Args:
             config_path: Path to BSP registry configuration file
+            verbose: If True, stream docker build output live during builds
         """
         self.config_path = Path(config_path)
+        self.verbose = verbose
         self.logger = logging.getLogger(self.__class__.__name__)
         self.model = None  # Will hold parsed registry configuration
         self.env_manager = None  # Environment configuration manager
@@ -470,7 +472,13 @@ class BspManager:
         if not checkout_only and resolved.container:
             container = resolved.container
             if container.file and container.image:
-                build_docker(str(self.config_path.parent), container.file, container.image, container.args)
+                build_docker(
+                    str(self.config_path.parent),
+                    container.file,
+                    container.image,
+                    container.args,
+                    verbose=self.verbose,
+                )
         else:
             if checkout_only:
                 logging.info("Skipping Docker build in checkout mode")
