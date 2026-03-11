@@ -112,7 +112,7 @@ registry:
         - kas/isar/features/ssh.yaml
 
     - slug: wic
-      description: "Enable WIC image creation in the Isar image"
+      description: "Enable WIC image creation"
       compatible_with: [isar]   # This feature is only compatible with the Isar framework
       includes:
         - kas/isar/features/wic.yaml
@@ -134,23 +134,23 @@ registry:
         path: build/isar-qemuarm64-ubuntu-noble
 
     # --- QEMU X86-64 Isar ---
-    - name: isar-ubuntu-qemux86-64
+    - name: isar-qemux86-64-ubuntu-noble
       description: "Isar v0.11 QEMU x86-64 (Ubuntu Noble)"
       device: qemuamd64
       release: ubuntu-noble
       features: [users, wic, isar-ssh]
       build:
         container: "isar-debian-trixie"
-        path: build/isar-ubuntu-qemux86-64
+        path: build/isar-qemux86-64-ubuntu-noble
 
-    - name: isar-debian-qemux86-64
+    - name: isar-qemux86-64-debian-trixie
       description: "Isar v0.11 QEMU x86-64 (Debian Trixie)"
       device: qemuamd64
       release: debian-trixie
       features: [users, wic, isar-ssh]
       build:
         container: "isar-debian-trixie"
-        path: build/isar-debian-qemux86-64
+        path: build/isar-qemux86-64-debian-trixie
 
     - name: isar-qemuarm64-debian-trixie
       description: "Isar v0.11 QEMU ARM64 (Debian Trixie)"
