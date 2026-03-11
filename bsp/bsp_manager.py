@@ -590,6 +590,7 @@ class BspManager:
                 build_docker(str(self.config_path.parent), container.file, container.image, container.args)
 
         self.prepare_build_directory(resolved.build_path)
+        self._copy_files(resolved)
 
         kas_mgr = self._get_kas_manager_for_resolved(resolved, use_container=True)
 

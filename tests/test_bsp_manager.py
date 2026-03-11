@@ -992,3 +992,28 @@ class TestGlobalCopy:
 
         assert (base / "build" / "setup.sh").exists()
         assert (base / "build" / "config.sh").exists()
+
+
+# =============================================================================
+# Regression test: shell command must also execute copy entries
+# =============================================================================
+
+class TestShellCopyFiles:
+    def test_shell_executes_named_env_copy(self, registry_with_named_env_copy_file):
+        """_copy_files is called during shell_into_bsp so named-env copy entries are applied."""
+        from unittest.mock import patch
+        from bsp.kas_manager import KasManager
+
+        manager = BspManager(config_path=str(registry_with_named_env_copy_file))
+        manager.initialize()
+
+        base = registry_with_named_env_copy_file.parent
+        (base / "isar" / "scripts").mkdir(parents=True, exist_ok=True)
+        (base / "isar" / "scripts" / "isar-runqemu.sh").write_text("#!/bin/sh\n")
+        (base / "build" / "isar").mkdir(parents=True, exist_ok=True)
+
+        with patch.object(KasManager, "shell_session"):
+            with patch.object(manager, "prepare_build_directory"):
+                manager.shell_by_components("isar-board", "isar-v0.11")
+
+        assert (base / "build" / "isar" / "isar-runqemu.sh").exists()
