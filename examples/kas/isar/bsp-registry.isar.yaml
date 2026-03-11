@@ -20,7 +20,7 @@ environments:
     container: isar-debian-trixie
     # Copy the isar-runqemu.sh script into the build directory so it can be used by the BSP presets for running QEMU with the generated images
     copy:
-      - isar/scripts/isar-runqemu.sh: build/    
+      - kas/isar/scripts/isar-runqemu.sh: build/    
     variables:
       - name: "DL_DIR"
         value: "$ENV{HOME}/data/cache/isar/downloads"
