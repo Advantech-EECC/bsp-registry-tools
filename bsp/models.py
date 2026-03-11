@@ -225,16 +225,48 @@ class Device:
 
 
 @dataclass
-class VendorIncludes:
+class VendorRelease:
     """
-    Vendor-specific KAS includes for a release.
+    A vendor-specific sub-release (e.g. a specific BSP kernel version for a board vendor).
+
+    ``VendorRelease`` entries live inside ``VendorOverride.releases`` and let a
+    single top-level release (e.g. ``scarthgap``) expose multiple BSP versions
+    for the same vendor (e.g. ``imx-6.6.53``, ``imx-6.12.0``).  The resolver
+    adds the matching ``VendorRelease.includes`` after the parent
+    ``VendorOverride.includes`` when the caller specifies a ``vendor_release``.
 
     Attributes:
-        vendor: Board vendor name this applies to
-        includes: List of vendor-specific KAS files for this release
+        slug: Unique identifier for this vendor sub-release (e.g. 'imx-6.6.53')
+        description: Human-readable description
+        includes: KAS configuration files specific to this vendor sub-release
+    """
+    slug: str
+    description: str
+    includes: List[str] = field(default_factory=empty_list)
+
+
+@dataclass
+class VendorOverride:
+    """
+    Vendor-specific KAS configuration overrides for a release.
+
+    Each ``VendorOverride`` entry groups, for a single board vendor:
+
+    * ``includes`` — KAS files added for **every** build targeting that vendor
+      (e.g. a common Advantech BSP meta-layer fragment).
+    * ``releases`` — Optional list of vendor sub-releases (e.g. different NXP
+      i.MX kernel versions).  When the resolver is given a ``vendor_release``
+      slug it looks up the matching ``VendorRelease`` entry and appends its
+      includes after the common ``includes``.
+
+    Attributes:
+        vendor: Board vendor name this override applies to
+        includes: KAS files common to all sub-releases for this vendor
+        releases: Optional list of vendor-specific sub-releases
     """
     vendor: str
     includes: List[str] = field(default_factory=empty_list)
+    releases: List[VendorRelease] = field(default_factory=empty_list)
 
 
 @dataclass
@@ -274,13 +306,6 @@ class Distro:
         description: Human-readable description
         vendor: Distro vendor/maintainer name (e.g., 'yocto', 'siemens')
         includes: KAS configuration files that configure this distro
-        vendor_includes: Vendor-specific KAS includes for this distro.  The
-                         resolver selects the entries whose ``vendor`` field
-                         matches the board vendor of the device being built and
-                         appends their includes after ``distro.includes`` but
-                         before ``release.includes``.  This avoids repeating
-                         the same vendor-specific BSP layer configuration in
-                         every release entry.
         framework: Optional slug of the build-system framework this distro
                    is based on (references ``Registry.frameworks``).  Used
                    by ``Feature.compatible_with`` checks.
@@ -289,7 +314,6 @@ class Distro:
     description: str
     vendor: str = ""
     includes: List[str] = field(default_factory=empty_list)
-    vendor_includes: List[VendorIncludes] = field(default_factory=empty_list)
     framework: Optional[str] = None
 
 
@@ -304,7 +328,18 @@ class Release:
         includes: Base KAS configuration files for this release
         yocto_version: Yocto Project version string (e.g., '5.0')
         isar_version: Isar version string (optional)
-        vendor_includes: Vendor-specific KAS includes for this release
+        vendor_overrides: Vendor-specific KAS configuration overrides.  Each
+                          entry targets a single board vendor and may contain
+                          both common includes (applied for every build of that
+                          vendor) and a list of sub-releases (e.g. different
+                          kernel / BSP versions).  The resolver selects the
+                          entry whose ``vendor`` matches the device's board
+                          vendor, appends its ``includes``, and—when a
+                          ``vendor_release`` slug is given—appends the matching
+                          sub-release ``includes`` as well.  Multiple sub-
+                          releases for the same Yocto release (e.g.
+                          ``imx-6.6.53``, ``imx-6.12.0``) can thus coexist
+                          without duplicating the Yocto release entry.
         environment: Optional name of the named environment to use for this
                      release (references ``RegistryRoot.environments``).
                      When omitted the ``"default"`` named environment is used
@@ -319,7 +354,7 @@ class Release:
     includes: List[str] = field(default_factory=empty_list)
     yocto_version: Optional[str] = None
     isar_version: Optional[str] = None
-    vendor_includes: List[VendorIncludes] = field(default_factory=empty_list)
+    vendor_overrides: List[VendorOverride] = field(default_factory=empty_list)
     environment: Optional[str] = None
     distro: Optional[str] = None
 
@@ -388,6 +423,11 @@ class BspPreset:
         releases: List of release slugs (mutually exclusive with ``release``).
                   The resolver expands each entry into an individual virtual
                   preset named ``{name}-{release_slug}``.
+        vendor_release: Optional vendor sub-release slug (references a
+                        ``VendorRelease.slug`` inside the matching
+                        ``VendorOverride`` entry for the device's board vendor).
+                        When set the resolver appends the sub-release's includes
+                        after the vendor's common includes.
         features: List of feature slugs to enable (references registry.features)
         build: Optional build configuration (container + output path).  When
                absent the container is taken from the release's named
@@ -401,6 +441,7 @@ class BspPreset:
     device: str
     release: Optional[str] = None
     releases: List[str] = field(default_factory=empty_list)
+    vendor_release: Optional[str] = None
     features: List[str] = field(default_factory=empty_list)
     build: Optional[BspBuild] = None
 

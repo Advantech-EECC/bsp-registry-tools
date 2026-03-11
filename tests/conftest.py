@@ -791,7 +791,7 @@ def registry_with_multi_release_bsp_file(tmp_dir):
     return registry_path
 
 
-REGISTRY_WITH_VENDOR_INCLUDES_YAML = """
+REGISTRY_WITH_VENDOR_OVERRIDES_YAML = """
 specification:
   version: "2.0"
 containers:
@@ -806,10 +806,6 @@ registry:
       vendor: yocto
       includes:
         - kas/poky/distro/poky.yaml
-      vendor_includes:
-        - vendor: advantech
-          includes:
-            - vendors/advantech/distro-common.yml
   devices:
     - slug: adv-imx8
       description: "Advantech i.MX8 Board"
@@ -830,36 +826,60 @@ registry:
       yocto_version: "5.0"
       includes:
         - kas/poky/scarthgap.yaml
-      vendor_includes:
+      vendor_overrides:
         - vendor: advantech
           includes:
-            - vendors/advantech/nxp/imx-6.6.52-2.2.0-scarthgap.yml
+            - kas/yocto/vendors/advantech/scarthgap.yaml
+          releases:
+            - slug: imx-6.6.53
+              description: "Scarthgap for i.MX 6.6.53"
+              includes:
+                - kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml
+            - slug: imx-6.12.0
+              description: "Scarthgap for i.MX 6.12.0"
+              includes:
+                - kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml
     - slug: kirkstone
       distro: poky
       description: "Yocto 4.0 LTS (Kirkstone)"
       yocto_version: "4.0"
       includes:
         - kas/poky/kirkstone.yaml
-      vendor_includes:
+      vendor_overrides:
         - vendor: advantech
           includes:
-            - vendors/advantech/nxp/imx-5.15.52-2.1.0-kirkstone.yml
+            - kas/yocto/vendors/advantech/kirkstone.yaml
+          releases:
+            - slug: imx-5.15.52
+              description: "Kirkstone for i.MX 5.15.52"
+              includes:
+                - kas/yocto/vendors/advantech/nxp/imx-5.15.52.yaml
     - slug: generic-release
       distro: poky
-      description: "Generic release without vendor includes"
+      description: "Generic release without vendor overrides"
       yocto_version: "5.0"
       includes:
         - kas/poky/generic.yaml
   features: []
   bsp:
-    - name: adv-imx8-scarthgap
-      description: "Advantech i.MX8 Scarthgap BSP"
+    - name: adv-imx8-scarthgap-imx6.6.53
+      description: "Advantech i.MX8 Scarthgap (imx-6.6.53)"
       device: adv-imx8
       release: scarthgap
+      vendor_release: imx-6.6.53
       features: []
       build:
         container: "debian-bookworm"
-        path: build/adv-imx8-scarthgap
+        path: build/adv-imx8-scarthgap-imx6.6.53
+    - name: adv-imx8-scarthgap-imx6.12.0
+      description: "Advantech i.MX8 Scarthgap (imx-6.12.0)"
+      device: adv-imx8
+      release: scarthgap
+      vendor_release: imx-6.12.0
+      features: []
+      build:
+        container: "debian-bookworm"
+        path: build/adv-imx8-scarthgap-imx6.12.0
     - name: qemu-arm64-scarthgap
       description: "QEMU ARM64 Scarthgap BSP"
       device: qemu-arm64
@@ -872,8 +892,8 @@ registry:
 
 
 @pytest.fixture
-def registry_with_vendor_includes_file(tmp_dir):
-    """Create a registry YAML file with vendor_includes on distro and release."""
+def registry_with_vendor_overrides_file(tmp_dir):
+    """Create a registry YAML file with vendor_overrides (with sub-releases) on releases."""
     registry_path = tmp_dir / "bsp-registry.yaml"
-    registry_path.write_text(REGISTRY_WITH_VENDOR_INCLUDES_YAML)
+    registry_path.write_text(REGISTRY_WITH_VENDOR_OVERRIDES_YAML)
     return registry_path

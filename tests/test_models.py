@@ -12,7 +12,8 @@ from bsp import (
     DeviceBuild,
     BspBuild,
     Device,
-    VendorIncludes,
+    VendorRelease,
+    VendorOverride,
     Framework,
     Distro,
     Release,
@@ -208,10 +209,19 @@ class TestV2DataClasses:
         assert dev.build is not None
         assert dev.build.path == "build/test"
 
-    def test_vendor_includes(self):
-        vi = VendorIncludes(vendor="advantech", includes=["adv.yml"])
-        assert vi.vendor == "advantech"
-        assert vi.includes == ["adv.yml"]
+    def test_vendor_release(self):
+        vr = VendorRelease(slug="imx-6.6.53", description="i.MX 6.6.53")
+        assert vr.slug == "imx-6.6.53"
+        assert vr.description == "i.MX 6.6.53"
+        assert vr.includes == []
+
+    def test_vendor_override(self):
+        vr = VendorRelease(slug="imx-6.6.53", description="i.MX 6.6.53", includes=["imx.yml"])
+        vo = VendorOverride(vendor="advantech", includes=["adv.yml"], releases=[vr])
+        assert vo.vendor == "advantech"
+        assert vo.includes == ["adv.yml"]
+        assert len(vo.releases) == 1
+        assert vo.releases[0].slug == "imx-6.6.53"
 
     def test_release_defaults(self):
         release = Release(slug="scarthgap", description="Scarthgap")
@@ -219,7 +229,7 @@ class TestV2DataClasses:
         assert release.includes == []
         assert release.yocto_version is None
         assert release.isar_version is None
-        assert release.vendor_includes == []
+        assert release.vendor_overrides == []
         assert release.environment is None
 
     def test_release_with_versions(self):

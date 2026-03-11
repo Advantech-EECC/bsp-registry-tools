@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from bsp import BspManager, BspPreset, Docker, V2Resolver
-from .conftest import EMPTY_REGISTRY_YAML, REGISTRY_WITH_FEATURES_YAML, REGISTRY_WITH_FRAMEWORKS_YAML, REGISTRY_WITH_VENDOR_INCLUDES_YAML
+from .conftest import EMPTY_REGISTRY_YAML, REGISTRY_WITH_FEATURES_YAML, REGISTRY_WITH_FRAMEWORKS_YAML, REGISTRY_WITH_VENDOR_OVERRIDES_YAML
 
 
 class TestBspManagerInit:
@@ -1227,105 +1227,162 @@ registry:
             manager.resolver.list_presets()
 
 
-class TestVendorIncludes:
-    """Tests for vendor_includes on Release and Distro."""
+class TestVendorOverrides:
+    """Tests for vendor_overrides (with sub-releases) on Release."""
 
-    def test_release_vendor_includes_applied_for_matching_vendor(
-        self, registry_with_vendor_includes_file
+    def test_vendor_override_common_includes_applied_for_matching_vendor(
+        self, registry_with_vendor_overrides_file
     ):
-        """Vendor includes from a release are added to KAS files for a matching device vendor."""
-        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        """Common includes from vendor_overrides are added for a matching device vendor."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
         manager.initialize()
         resolved = manager.resolver.resolve("adv-imx8", "scarthgap")
-        assert "vendors/advantech/nxp/imx-6.6.52-2.2.0-scarthgap.yml" in resolved.kas_files
+        assert "kas/yocto/vendors/advantech/scarthgap.yaml" in resolved.kas_files
 
-    def test_release_vendor_includes_not_applied_for_other_vendor(
-        self, registry_with_vendor_includes_file
+    def test_vendor_override_common_includes_not_applied_for_other_vendor(
+        self, registry_with_vendor_overrides_file
     ):
-        """Vendor includes from a release are NOT added for a device with a different vendor."""
-        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        """Common vendor_overrides includes are NOT added for a non-matching device vendor."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
         manager.initialize()
         resolved = manager.resolver.resolve("qemu-arm64", "scarthgap")
-        assert "vendors/advantech/nxp/imx-6.6.52-2.2.0-scarthgap.yml" not in resolved.kas_files
+        assert "kas/yocto/vendors/advantech/scarthgap.yaml" not in resolved.kas_files
 
-    def test_distro_vendor_includes_applied_for_matching_vendor(
-        self, registry_with_vendor_includes_file
+    def test_vendor_release_includes_applied_when_specified(
+        self, registry_with_vendor_overrides_file
     ):
-        """Vendor includes from a distro are added to KAS files for a matching device vendor."""
-        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        """Vendor sub-release includes are added when vendor_release_slug is given."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+        )
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml" in resolved.kas_files
+
+    def test_other_vendor_release_not_applied(
+        self, registry_with_vendor_overrides_file
+    ):
+        """Only the selected vendor sub-release is included, not others."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+        )
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml" not in resolved.kas_files
+
+    def test_vendor_release_not_added_when_omitted(
+        self, registry_with_vendor_overrides_file
+    ):
+        """When no vendor_release_slug is given, sub-release includes are not added."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
         manager.initialize()
         resolved = manager.resolver.resolve("adv-imx8", "scarthgap")
-        assert "vendors/advantech/distro-common.yml" in resolved.kas_files
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml" not in resolved.kas_files
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml" not in resolved.kas_files
 
-    def test_distro_vendor_includes_not_applied_for_other_vendor(
-        self, registry_with_vendor_includes_file
-    ):
-        """Distro vendor includes are NOT added for a device with a different vendor."""
-        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+    def test_vendor_overrides_kas_files_order(self, registry_with_vendor_overrides_file):
+        """KAS file order: distro.includes -> release.includes -> vendor common
+        -> vendor sub-release -> device.includes."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
         manager.initialize()
-        resolved = manager.resolver.resolve("qemu-arm64", "scarthgap")
-        assert "vendors/advantech/distro-common.yml" not in resolved.kas_files
-
-    def test_vendor_includes_maintain_correct_kas_file_order(self, registry_with_vendor_includes_file):
-        """KAS file order: distro.includes -> distro.vendor_includes -> release.includes
-        -> release.vendor_includes -> device.includes."""
-        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
-        manager.initialize()
-        resolved = manager.resolver.resolve("adv-imx8", "scarthgap")
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.12.0"
+        )
         kas = resolved.kas_files
         idx_distro = kas.index("kas/poky/distro/poky.yaml")
-        idx_distro_vendor = kas.index("vendors/advantech/distro-common.yml")
         idx_release = kas.index("kas/poky/scarthgap.yaml")
-        idx_release_vendor = kas.index("vendors/advantech/nxp/imx-6.6.52-2.2.0-scarthgap.yml")
+        idx_vendor_common = kas.index("kas/yocto/vendors/advantech/scarthgap.yaml")
+        idx_vendor_sub = kas.index("kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml")
         idx_device = kas.index("kas/adv-imx8.yaml")
-        assert idx_distro < idx_distro_vendor < idx_release < idx_release_vendor < idx_device
+        assert idx_distro < idx_release < idx_vendor_common < idx_vendor_sub < idx_device
 
-    def test_release_without_vendor_includes_unaffected(
-        self, registry_with_vendor_includes_file
+    def test_release_without_vendor_overrides_unaffected(
+        self, registry_with_vendor_overrides_file
     ):
-        """A release with no vendor_includes resolves normally for any device vendor."""
-        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        """A release with no vendor_overrides resolves normally for any device vendor."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
         manager.initialize()
         resolved = manager.resolver.resolve("adv-imx8", "generic-release")
         assert "kas/poky/generic.yaml" in resolved.kas_files
-        # No vendor-specific files should appear
-        assert "vendors/advantech/nxp/imx-6.6.52-2.2.0-scarthgap.yml" not in resolved.kas_files
+        assert "kas/yocto/vendors/advantech/scarthgap.yaml" not in resolved.kas_files
+
+    def test_invalid_vendor_release_exits(self, registry_with_vendor_overrides_file):
+        """Specifying an unknown vendor_release slug causes a SystemExit."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        with pytest.raises(SystemExit):
+            manager.resolver.resolve(
+                "adv-imx8", "scarthgap", vendor_release_slug="imx-does-not-exist"
+            )
+
+    def test_vendor_release_without_matching_vendor_override_exits(
+        self, registry_with_vendor_overrides_file
+    ):
+        """Specifying vendor_release for a device with no matching vendor override exits."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        with pytest.raises(SystemExit):
+            manager.resolver.resolve(
+                "qemu-arm64", "scarthgap", vendor_release_slug="imx-6.6.53"
+            )
+
+    def test_preset_with_vendor_release_resolved(self, registry_with_vendor_overrides_file):
+        """A BSP preset with vendor_release field resolves correctly."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("adv-imx8-scarthgap-imx6.6.53")
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml" in resolved.kas_files
+
+    def test_preset_vendor_release_uses_correct_sub_release(
+        self, registry_with_vendor_overrides_file
+    ):
+        """Two presets with different vendor_release fields use distinct sub-release files."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        r1, _ = manager.resolver.resolve_preset("adv-imx8-scarthgap-imx6.6.53")
+        r2, _ = manager.resolver.resolve_preset("adv-imx8-scarthgap-imx6.12.0")
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml" in r1.kas_files
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml" not in r1.kas_files
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml" in r2.kas_files
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml" not in r2.kas_files
 
     def test_list_releases_filters_by_device_vendor(
-        self, registry_with_vendor_includes_file, capsys
+        self, registry_with_vendor_overrides_file, capsys
     ):
         """list_releases with device_slug filters out releases that have no matching vendor."""
-        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
         manager.initialize()
         manager.list_releases(device_slug="adv-imx8")
         captured = capsys.readouterr()
-        # scarthgap and kirkstone have advantech vendor_includes -> shown
+        # scarthgap and kirkstone have advantech vendor_overrides -> shown
         assert "scarthgap" in captured.out
         assert "kirkstone" in captured.out
-        # generic-release has no vendor_includes -> also shown (generic = all vendors)
+        # generic-release has no vendor_overrides -> shown (generic = all vendors)
         assert "generic-release" in captured.out
 
     def test_list_releases_filters_out_non_matching_vendor(
-        self, registry_with_vendor_includes_file, capsys
+        self, registry_with_vendor_overrides_file, capsys
     ):
-        """list_releases with qemu device_slug excludes releases that only have advantech includes."""
-        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        """list_releases with qemu device_slug excludes releases only targeting advantech."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
         manager.initialize()
         manager.list_releases(device_slug="qemu-arm64")
         captured = capsys.readouterr()
-        # scarthgap and kirkstone only have advantech vendor_includes -> excluded for qemu
+        # scarthgap and kirkstone only have advantech vendor_overrides -> excluded for qemu
         assert "scarthgap" not in captured.out
         assert "kirkstone" not in captured.out
-        # generic-release has no vendor_includes -> shown for all devices
+        # generic-release has no vendor_overrides -> shown for all devices
         assert "generic-release" in captured.out
 
-    def test_distro_vendor_includes_loaded_from_yaml(
-        self, registry_with_vendor_includes_file
-    ):
-        """Distro vendor_includes field is correctly parsed from YAML."""
-        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+    def test_vendor_overrides_loaded_from_yaml(self, registry_with_vendor_overrides_file):
+        """vendor_overrides and their sub-releases are correctly parsed from YAML."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
         manager.initialize()
-        distro = manager.resolver.get_distro("poky")
-        assert len(distro.vendor_includes) == 1
-        assert distro.vendor_includes[0].vendor == "advantech"
-        assert "vendors/advantech/distro-common.yml" in distro.vendor_includes[0].includes
+        release = manager.resolver.get_release("scarthgap")
+        assert len(release.vendor_overrides) == 1
+        vo = release.vendor_overrides[0]
+        assert vo.vendor == "advantech"
+        assert "kas/yocto/vendors/advantech/scarthgap.yaml" in vo.includes
+        slugs = [vr.slug for vr in vo.releases]
+        assert "imx-6.6.53" in slugs
+        assert "imx-6.12.0" in slugs

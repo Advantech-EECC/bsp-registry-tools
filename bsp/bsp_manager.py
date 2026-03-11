@@ -155,9 +155,9 @@ class BspManager:
 
         Args:
             device_slug: If provided, filter releases to those compatible with
-                         the device's vendor (via vendor_includes). A release is
-                         shown when it has no vendor_includes (generic), or when
-                         it has at least one vendor_includes entry whose vendor
+                         the device's vendor (via vendor_overrides). A release is
+                         shown when it has no vendor_overrides (generic), or when
+                         it has at least one vendor_overrides entry whose vendor
                          matches the device's board vendor.  When omitted, all
                          releases are shown.
         """
@@ -172,8 +172,8 @@ class BspManager:
             # Filter: keep releases that are generic OR have a matching vendor entry
             releases = [
                 r for r in releases
-                if not r.vendor_includes
-                or any(vi.vendor == device.vendor for vi in r.vendor_includes)
+                if not r.vendor_overrides
+                or any(vo.vendor == device.vendor for vo in r.vendor_overrides)
             ]
             print(f"Releases compatible with device '{device_slug}':")
         else:
@@ -183,7 +183,7 @@ class BspManager:
         for release in releases:
             yocto = f" [Yocto {release.yocto_version}]" if release.yocto_version else ""
             isar = f" [Isar {release.isar_version}]" if release.isar_version else ""
-            vendors = [vi.vendor for vi in release.vendor_includes]
+            vendors = [vo.vendor for vo in release.vendor_overrides]
             vendor_str = f", vendor overrides: {', '.join(vendors)}" if vendors else ""
             env_str = f", environment: {release.environment}" if release.environment else ""
             print(
