@@ -379,6 +379,19 @@ class TestBspManagerBuildByComponents:
             manager.build_by_components("imx8-board", "scarthgap")
         mock_build.assert_called_once()
 
+    def test_build_by_components_default_build_path(self, registry_with_features_file):
+        """Without a BSP preset, build_path should default to 'build/'."""
+        manager = BspManager(config_path=str(registry_with_features_file))
+        manager.initialize()
+        with patch("bsp.bsp_manager.build_docker"), \
+             patch("bsp.kas_manager.KasManager.build_project"), \
+             patch("bsp.kas_manager.KasManager.dump_config", return_value=None), \
+             patch("bsp.kas_manager.KasManager.validate_kas_files", return_value=True), \
+             patch("bsp.kas_manager.KasManager.check_kas_available", return_value=True), \
+             patch.object(manager, "prepare_build_directory") as mock_prepare:
+            manager.build_by_components("imx8-board", "scarthgap")
+        mock_prepare.assert_called_once_with("build/")
+
     def test_build_bsp_preset_calls_kas(self, registry_with_features_file):
         manager = BspManager(config_path=str(registry_with_features_file))
         manager.initialize()
@@ -1000,7 +1013,14 @@ class TestGlobalCopy:
 
 class TestShellCopyFiles:
     def test_shell_executes_named_env_copy(self, registry_with_named_env_copy_file):
-        """_copy_files is called during shell_into_bsp so named-env copy entries are applied."""
+        """_copy_files is called during shell_by_components so named-env copy entries are applied.
+
+        Without a BSP preset, build_path defaults to 'build/', so copy destinations
+        are resolved relative to that build directory. A copy entry with dst='build/isar/'
+        therefore lands at {registry_root}/build/build/isar/ — the 'build/isar/' sub-path
+        inside the 'build/' workspace, consistent with how preset builds work (e.g. a preset
+        with build_path='build/my-bsp' would place the same entry at build/my-bsp/build/isar/).
+        """
         from unittest.mock import patch
         from bsp.kas_manager import KasManager
 
@@ -1010,13 +1030,14 @@ class TestShellCopyFiles:
         base = registry_with_named_env_copy_file.parent
         (base / "isar" / "scripts").mkdir(parents=True, exist_ok=True)
         (base / "isar" / "scripts" / "isar-runqemu.sh").write_text("#!/bin/sh\n")
-        (base / "build" / "isar").mkdir(parents=True, exist_ok=True)
+        # With build_path="build/", dst="build/isar/" resolves to build/build/isar/
+        (base / "build" / "build" / "isar").mkdir(parents=True, exist_ok=True)
 
         with patch.object(KasManager, "shell_session"):
             with patch.object(manager, "prepare_build_directory"):
                 manager.shell_by_components("isar-board", "isar-v0.11")
 
-        assert (base / "build" / "isar" / "isar-runqemu.sh").exists()
+        assert (base / "build" / "build" / "isar" / "isar-runqemu.sh").exists()
 
 
 # =============================================================================

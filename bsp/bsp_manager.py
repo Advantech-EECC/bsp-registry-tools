@@ -573,6 +573,8 @@ class BspManager:
             f"features={feature_slugs or []}"
         )
         resolved = self.resolver.resolve(device_slug, release_slug, feature_slugs)
+        if not resolved.build_path:
+            resolved.build_path = "build/"
         self._build_resolved(
             resolved,
             checkout_only=checkout_only,
@@ -661,6 +663,8 @@ class BspManager:
             f"features={feature_slugs or []}"
         )
         resolved = self.resolver.resolve(device_slug, release_slug, feature_slugs)
+        if not resolved.build_path:
+            resolved.build_path = "build/"
         self._shell_resolved(
             resolved, command=command, label=f"{device_slug}/{release_slug}"
         )
