@@ -8,8 +8,9 @@ include:
 # Global environment variables for all builds (base layer – applied to every build)
 # Use $ENV{VAR_NAME} syntax to reference system environment variables
 environment:
-  - name: "GITCONFIG_FILE"
-    value: "$ENV{HOME}/.gitconfig"
+  variables:
+    - name: "GITCONFIG_FILE"
+      value: "$ENV{HOME}/.gitconfig"
 
 # Named environments: each entry bundles a container reference + variables.
 # The special name "default" is used for any release that does not specify an environment.
