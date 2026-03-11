@@ -41,12 +41,17 @@ environment:              # optional – global env vars for all builds
   - name: "DL_DIR"
     value: "$ENV{HOME}/downloads"
 
+copy:                     # optional – global file copies executed before every build
+  - scripts/global-setup.sh: build/
+
 environments:             # optional – named build environments
   default:                # special name: used when release has no environment field
     container: "debian-bookworm"
     variables:
       - name: "DL_DIR"
         value: "$ENV{HOME}/downloads"
+    copy:                 # optional – file copies executed for every build using this environment
+      - scripts/env-setup.sh: build/
 
 containers:               # optional – Docker container definitions (dict)
   debian-bookworm:
@@ -164,6 +169,27 @@ environment:
 
 ---
 
+## `copy` (optional)
+
+Global file-copy entries executed **before every build** in the registry.
+This is useful for scripts or configuration files that must be present in the
+build tree regardless of the device, release, or environment.
+
+Each entry is a single-key dict mapping a source path to a destination path.
+Both paths are resolved relative to the registry file's parent directory.
+If the destination ends with `/` or is an existing directory, the source
+filename is preserved inside it.
+
+```yaml
+copy:
+  - scripts/global-setup.sh: build/
+  - config/global.conf: build/conf/
+```
+
+See [Copy merge order](#copy-merge-order) below for how global, environment, and device copies are combined.
+
+---
+
 ## `containers` (optional)
 
 Docker container definitions used as build environments.  Containers are
@@ -206,10 +232,11 @@ containers:
 
 ## `environments` (optional)
 
-Named build environments bundle a **container reference** and optional
-**environment variables** together under a single name.  This makes it
-easy to associate a specific container image and variable set with a
-particular class of releases (e.g., a separate Isar container).
+Named build environments bundle a **container reference**, optional
+**environment variables**, and optional **file-copy entries** together under a
+single name.  This makes it easy to associate a specific container image,
+variable set, and setup scripts with a particular class of releases (e.g., a
+separate Isar container with its own runqemu helper script).
 
 ```yaml
 environments:
@@ -220,13 +247,25 @@ environments:
         value: "$ENV{HOME}/data/cache/downloads"
       - name: "SSTATE_DIR"
         value: "$ENV{HOME}/data/cache/sstate"
+    copy:                     # optional: files to copy before builds that use this env
+      - scripts/env-setup.sh: build/
 
   isar-build:                 # named environment for Isar releases
     container: "debian-bookworm-isar"
     variables:
       - name: "DL_DIR"
         value: "$ENV{HOME}/data/cache/isar-downloads"
+    copy:
+      - isar/scripts/isar-runqemu.sh: build/    # copy helper script into every Isar build dir
 ```
+
+### `environments[*]` fields
+
+| Field       | Type                 | Description                                                                                   |
+|-------------|----------------------|-----------------------------------------------------------------------------------------------|
+| `container` | string (opt.)        | Container name (references `containers` section). Used when the device has no container set. |
+| `variables` | list (opt.)          | Environment variables merged on top of the root `environment` list.                           |
+| `copy`      | list[dict] (opt.)    | File-copy entries executed before every build that uses this environment. Same format as `Device.copy` and root-level `copy`. |
 
 ### Resolution rules
 
@@ -250,6 +289,18 @@ environments:
 Named environment variables are merged **on top of** the root-level
 `environment` list (root vars first, named-env vars win on conflict).
 Feature-level `env` variables are applied last.
+
+### Copy merge order
+
+File-copy entries from all three levels are **concatenated** in the following
+order before any copying takes place:
+
+```
+root-level copy → named environment copy → device copy
+```
+
+This means root-level copies always execute first (shared setup), then any
+environment-specific copies, and finally device-specific copies.
 
 ---
 
@@ -571,7 +622,11 @@ environment:
   - name: "GITCONFIG_FILE"
     value: "$ENV{HOME}/.gitconfig"
 
-# Named environments: bundle a container + variables under a name
+# Global file copies executed before every build in this registry
+copy:
+  - scripts/global-setup.sh: build/
+
+# Named environments: bundle a container + variables + optional copy under a name
 environments:
   default:                              # used by all releases unless overridden
     container: "debian-bookworm"
@@ -588,6 +643,9 @@ environments:
         value: "$ENV{HOME}/data/cache/isar-downloads"
       - name: "SSTATE_DIR"
         value: "$ENV{HOME}/data/cache/isar-sstate"
+    # Copy the QEMU run script into every Isar build directory
+    copy:
+      - isar/scripts/isar-runqemu.sh: build/
 
 containers:
   debian-bookworm:

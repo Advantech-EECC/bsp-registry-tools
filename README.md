@@ -347,7 +347,7 @@ environment:
 
 ### `environments`
 
-Named environments bundle a container reference and environment variables together.  The special name `"default"` is used by any release that does not explicitly name an environment.
+Named environments bundle a container reference, environment variables, and optional file-copy entries together.  The special name `"default"` is used by any release that does not explicitly name an environment.
 
 ```yaml
 environments:
@@ -356,7 +356,27 @@ environments:
     variables:
       - name: "DL_DIR"
         value: "$ENV{HOME}/yocto-cache/downloads"
+  isar-build:
+    container: "isar-debian-trixie"
+    variables:
+      - name: "DL_DIR"
+        value: "$ENV{HOME}/isar-cache/downloads"
+    # Copy the QEMU run script into every Isar build directory
+    copy:
+      - isar/scripts/isar-runqemu.sh: build/
 ```
+
+### `copy` (optional)
+
+Global file-copy entries executed **before every build** in the registry, regardless of device, release, or environment.
+
+```yaml
+copy:
+  - scripts/global-setup.sh: build/
+  - config/global.conf: build/conf/
+```
+
+Copies are merged in the order: **global → named environment → device**, so global copies always execute first.
 
 ### `containers`
 
@@ -645,7 +665,7 @@ python -m build
 | `Framework` | Build-system framework definition (e.g. Yocto, Isar) |
 | `Distro` | Linux distribution definition (e.g. Poky, Isar distro) |
 | `Docker` | Docker image, build arg, privileged mode, and runtime_args configuration |
-| `NamedEnvironment` | Named environment bundling a container reference and variables |
+| `NamedEnvironment` | Named environment bundling a container reference, variables, and optional copy entries |
 | `EnvironmentVariable` | Name/value pair with `$ENV{}` expansion support |
 
 ### Exceptions
