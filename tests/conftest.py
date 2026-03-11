@@ -722,3 +722,70 @@ distro: poky
     base_path.write_text(base_content)
     include_path.write_text(include_content)
     return base_path, include_path
+
+
+REGISTRY_WITH_MULTI_RELEASE_BSP_YAML = """
+specification:
+  version: "2.0"
+containers:
+  debian-bookworm:
+    image: "test/debian:bookworm"
+    file: null
+    args: []
+registry:
+  devices:
+    - slug: qemu-arm64
+      description: "QEMU ARM64"
+      vendor: qemu
+      soc_vendor: arm
+      includes:
+        - kas/qemu/qemuarm64.yaml
+    - slug: qemu-x86-64
+      description: "QEMU x86-64"
+      vendor: qemu
+      soc_vendor: intel
+      includes:
+        - kas/qemu/qemux86-64.yaml
+  releases:
+    - slug: scarthgap
+      description: "Yocto 5.0 LTS"
+      yocto_version: "5.0"
+      includes:
+        - kas/scarthgap.yaml
+    - slug: styhead
+      description: "Yocto 5.1"
+      yocto_version: "5.1"
+      includes:
+        - kas/styhead.yaml
+    - slug: walnascar
+      description: "Yocto 5.2"
+      yocto_version: "5.2"
+      includes:
+        - kas/walnascar.yaml
+  features: []
+  bsp:
+    # Multi-release preset: expands into qemu-arm64-scarthgap and qemu-arm64-styhead
+    - name: qemu-arm64
+      description: "QEMU ARM64 Yocto"
+      device: qemu-arm64
+      releases: [scarthgap, styhead]
+      build:
+        container: "debian-bookworm"
+        path: build/should-be-ignored
+    # Single-release preset (backward compat)
+    - name: qemu-x86-64-walnascar
+      description: "QEMU x86-64 Walnascar"
+      device: qemu-x86-64
+      release: walnascar
+      build:
+        container: "debian-bookworm"
+        path: build/qemu-x86-64-walnascar
+"""
+
+
+@pytest.fixture
+def registry_with_multi_release_bsp_file(tmp_dir):
+    """Create a registry YAML file with a multi-release BSP preset."""
+    registry_path = tmp_dir / "bsp-registry.yaml"
+    registry_path.write_text(REGISTRY_WITH_MULTI_RELEASE_BSP_YAML)
+    return registry_path

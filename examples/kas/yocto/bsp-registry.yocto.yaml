@@ -144,20 +144,13 @@ registry:
   bsp:
 
     # --- QEMU ARM64 ---
-    - name: poky-qemuarm64-scarthgap
-      description: "Poky QEMU ARM64 Scarthgap (Yocto 5.0 LTS)"
+    # Multi-release preset: expands into poky-qemuarm64-scarthgap and
+    # poky-qemuarm64-styhead automatically, eliminating duplicate entries.
+    - name: poky-qemuarm64
+      description: "Poky QEMU ARM64"
       device: qemuarm64
-      release: scarthgap
+      releases: [scarthgap, styhead]
       features: [systemd, debug, yocto-ssh]
-
-    - name: poky-qemuarm64-styhead
-      description: "Poky QEMU ARM64 Styhead (Yocto 5.1)"
-      device: qemuarm64
-      release: styhead
-      features: [systemd]
-      build:  
-        container: "debian-bookworm"
-        path: build/poky-qemuarm64-styhead
 
     # --- QEMU x86-64 ---
     - name: poky-harden-qemux86-64-scarthgap
@@ -169,23 +162,15 @@ registry:
         container: "debian-bookworm"
         path: build/poky-harden-qemux86-64-scarthgap
 
-    - name: poky-qemux86-64-scarthgap
-      description: "Poky QEMU x86-64 Scarthgap (Yocto 5.0 LTS)"
+    # Multi-release preset for x86-64: expands into poky-qemux86-64-scarthgap
+    # and poky-qemux86-64-styhead.
+    - name: poky-qemux86-64
+      description: "Poky QEMU x86-64"
       device: qemux86-64
-      release: scarthgap
+      releases: [scarthgap, styhead]
       features: [systemd, debug, yocto-ssh]
       build:
         container: "debian-bookworm"
-        path: build/poky-qemux86-64-scarthgap
-
-    - name: poky-qemux86-64-styhead
-      description: "Poky QEMU x86-64 Styhead (Yocto 5.1)"
-      device: qemux86-64
-      release: styhead
-      features: [systemd]
-      build:
-        container: "debian-bookworm"
-        path: build/poky-qemux86-64-styhead
 
     # --- QEMU ARM (32-bit) ---
     - name: poky-qemuarm-scarthgap

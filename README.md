@@ -132,16 +132,25 @@ registry:
       includes:
         - kas/scarthgap.yaml
 
-  # bsp presets name a device + release + features combination
+  # bsp presets name a device + release + features combination.
+  # Use "releases" (plural) to target multiple releases without repetition:
   bsp:
-    - name: poky-qemuarm64-scarthgap
-      description: "Poky QEMU ARM64 Scarthgap (Yocto 5.0 LTS)"
+    - name: poky-qemuarm64
+      description: "Poky QEMU ARM64"
       device: qemuarm64
-      release: scarthgap
+      releases: [scarthgap, styhead]   # expands to poky-qemuarm64-scarthgap / poky-qemuarm64-styhead
       features: []
       build:
         container: "debian-bookworm"
-        path: build/poky-qemuarm64-scarthgap
+    # Single-release entry (backward compatible):
+    - name: poky-qemuarm64-scarthgap-ota
+      description: "Poky QEMU ARM64 Scarthgap with OTA"
+      device: qemuarm64
+      release: scarthgap
+      features: [ota]
+      build:
+        container: "debian-bookworm"
+        path: build/poky-qemuarm64-scarthgap-ota
 ```
 
 ### 2. List Available BSPs
@@ -437,11 +446,12 @@ registry:
 
 ### `registry.bsp`
 
-Named presets — device + release + optional features:
+Named presets — device + release(s) + optional features:
 
 ```yaml
 registry:
   bsp:
+    # Single-release preset (backward compatible)
     - name: poky-qemuarm64-scarthgap
       description: "Poky QEMU ARM64 Scarthgap (Yocto 5.0 LTS)"
       device: qemuarm64
@@ -450,7 +460,23 @@ registry:
       build:              # optional: override container and/or output path
         container: "debian-bookworm"
         path: build/poky-qemuarm64-scarthgap
+
+    # Multi-release preset: use "releases" (plural) to avoid repeating the
+    # same entry for every Yocto release.  The resolver expands this into one
+    # preset per release, named "{name}-{release_slug}":
+    #   poky-qemuarm64-scarthgap  (auto-composed path: build/poky-qemuarm64-scarthgap)
+    #   poky-qemuarm64-styhead    (auto-composed path: build/poky-qemuarm64-styhead)
+    - name: poky-qemuarm64
+      description: "Poky QEMU ARM64"
+      device: qemuarm64
+      releases: [scarthgap, styhead]
+      features: [systemd, debug]
+      build:              # optional: container override (path is always auto-composed)
+        container: "debian-bookworm"
 ```
+
+> **Note**: `release` (singular) and `releases` (plural) are mutually exclusive.
+> Exactly one must be specified per preset entry.
 
 ## KAS Configuration Files
 

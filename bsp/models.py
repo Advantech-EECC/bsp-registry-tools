@@ -366,21 +366,33 @@ class BspPreset:
     """
     Named BSP preset (optional shortcut for a device+release+features combination).
 
+    A preset can target either a single release (``release``) or multiple
+    releases at once (``releases``).  Exactly one of these two fields must be
+    provided.  When ``releases`` is used the resolver expands the preset into
+    one virtual preset per release; each expanded preset is named
+    ``{name}-{release_slug}`` and its build path is auto-composed.
+
     Attributes:
         name: Unique preset name
         description: Human-readable description
         device: Device slug (references a device in registry.devices)
-        release: Release slug (references a release in registry.releases)
+        release: Single release slug (mutually exclusive with ``releases``).
+        releases: List of release slugs (mutually exclusive with ``release``).
+                  The resolver expands each entry into an individual virtual
+                  preset named ``{name}-{release_slug}``.
         features: List of feature slugs to enable (references registry.features)
         build: Optional build configuration (container + output path).  When
                absent the container is taken from the release's named
                environment and the path is auto-composed from the distro,
-               device, release, and feature slugs.
+               device, release, and feature slugs.  When ``releases`` is used,
+               the ``path`` sub-field is ignored and the path is always
+               auto-composed; the ``container`` override is still applied.
     """
     name: str
     description: str
     device: str
-    release: str
+    release: Optional[str] = None
+    releases: List[str] = field(default_factory=empty_list)
     features: List[str] = field(default_factory=empty_list)
     build: Optional[BspBuild] = None
 

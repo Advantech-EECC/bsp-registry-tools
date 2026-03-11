@@ -1052,3 +1052,176 @@ class TestCopyDestinationRelativeToBuildPath:
             f"Expected file at {expected} but it was not created. "
             "File should be placed relative to the BSP build path."
         )
+
+
+# =============================================================================
+# Tests for multi-release BSP presets (releases field)
+# =============================================================================
+
+class TestMultiReleaseBspPreset:
+    """Tests for BspPreset.releases (plural) feature."""
+
+    def test_list_presets_expands_multi_release(self, registry_with_multi_release_bsp_file):
+        """list_presets() expands a multi-release entry into one preset per release."""
+        manager = BspManager(config_path=str(registry_with_multi_release_bsp_file))
+        manager.initialize()
+        preset_names = [p.name for p in manager.resolver.list_presets()]
+        assert "qemu-arm64-scarthgap" in preset_names
+        assert "qemu-arm64-styhead" in preset_names
+        assert "qemu-x86-64-walnascar" in preset_names
+        # The base name without a release suffix must NOT appear
+        assert "qemu-arm64" not in preset_names
+
+    def test_list_presets_count(self, registry_with_multi_release_bsp_file):
+        """list_presets() returns two expanded + one single = three total presets."""
+        manager = BspManager(config_path=str(registry_with_multi_release_bsp_file))
+        manager.initialize()
+        assert len(manager.resolver.list_presets()) == 3
+
+    def test_expanded_preset_has_correct_release(self, registry_with_multi_release_bsp_file):
+        """Each expanded preset carries its own release slug."""
+        manager = BspManager(config_path=str(registry_with_multi_release_bsp_file))
+        manager.initialize()
+        presets = {p.name: p for p in manager.resolver.list_presets()}
+        assert presets["qemu-arm64-scarthgap"].release == "scarthgap"
+        assert presets["qemu-arm64-styhead"].release == "styhead"
+
+    def test_expanded_preset_inherits_device(self, registry_with_multi_release_bsp_file):
+        """Expanded presets inherit the device slug from the parent entry."""
+        manager = BspManager(config_path=str(registry_with_multi_release_bsp_file))
+        manager.initialize()
+        presets = {p.name: p for p in manager.resolver.list_presets()}
+        assert presets["qemu-arm64-scarthgap"].device == "qemu-arm64"
+        assert presets["qemu-arm64-styhead"].device == "qemu-arm64"
+
+    def test_expanded_preset_path_is_auto_composed(self, registry_with_multi_release_bsp_file):
+        """Expanded presets ignore the explicit build.path and auto-compose instead."""
+        manager = BspManager(config_path=str(registry_with_multi_release_bsp_file))
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("qemu-arm64-scarthgap")
+        # Auto-composed path: build/{device}-{release} (no distro prefix here)
+        assert resolved.build_path == "build/qemu-arm64-scarthgap"
+
+    def test_expanded_preset_container_is_preserved(self, registry_with_multi_release_bsp_file):
+        """Expanded presets preserve the container override from build.container."""
+        manager = BspManager(config_path=str(registry_with_multi_release_bsp_file))
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("qemu-arm64-scarthgap")
+        assert resolved.container is not None
+        assert resolved.container.image == "test/debian:bookworm"
+
+    def test_resolve_preset_expanded_name(self, registry_with_multi_release_bsp_file):
+        """resolve_preset() resolves an expanded preset by its full name."""
+        manager = BspManager(config_path=str(registry_with_multi_release_bsp_file))
+        manager.initialize()
+        resolved, preset = manager.resolver.resolve_preset("qemu-arm64-styhead")
+        assert preset.name == "qemu-arm64-styhead"
+        assert resolved.release.slug == "styhead"
+        assert resolved.device.slug == "qemu-arm64"
+
+    def test_resolve_preset_unknown_expanded_name_exits(self, registry_with_multi_release_bsp_file):
+        """resolve_preset() exits when the base name (not expanded) is looked up."""
+        manager = BspManager(config_path=str(registry_with_multi_release_bsp_file))
+        manager.initialize()
+        with pytest.raises(SystemExit):
+            manager.resolver.resolve_preset("qemu-arm64")
+
+    def test_list_bsp_shows_expanded_names(self, registry_with_multi_release_bsp_file, capsys):
+        """list_bsp() prints the expanded preset names."""
+        manager = BspManager(config_path=str(registry_with_multi_release_bsp_file))
+        manager.initialize()
+        manager.list_bsp()
+        captured = capsys.readouterr()
+        assert "qemu-arm64-scarthgap" in captured.out
+        assert "qemu-arm64-styhead" in captured.out
+        assert "qemu-x86-64-walnascar" in captured.out
+
+    def test_get_bsp_by_name_expanded(self, registry_with_multi_release_bsp_file):
+        """get_bsp_by_name() finds an expanded preset by its full name."""
+        manager = BspManager(config_path=str(registry_with_multi_release_bsp_file))
+        manager.initialize()
+        preset = manager.get_bsp_by_name("qemu-arm64-scarthgap")
+        assert isinstance(preset, BspPreset)
+        assert preset.release == "scarthgap"
+
+    def test_single_release_preset_unchanged(self, registry_with_multi_release_bsp_file):
+        """Presets using the singular release field are returned as-is."""
+        manager = BspManager(config_path=str(registry_with_multi_release_bsp_file))
+        manager.initialize()
+        preset = manager.get_bsp_by_name("qemu-x86-64-walnascar")
+        assert preset.release == "walnascar"
+        resolved, _ = manager.resolver.resolve_preset("qemu-x86-64-walnascar")
+        assert resolved.build_path == "build/qemu-x86-64-walnascar"
+
+    def test_expand_preset_both_fields_exits(self, tmp_dir):
+        """expand_preset() exits when both release and releases are set."""
+        bad_yaml = """
+specification:
+  version: "2.0"
+containers:
+  c:
+    image: "test:latest"
+    file: null
+    args: []
+registry:
+  devices:
+    - slug: dev
+      description: "d"
+      vendor: v
+      soc_vendor: s
+      includes: []
+  releases:
+    - slug: rel-a
+      description: "r"
+      includes: []
+    - slug: rel-b
+      description: "r"
+      includes: []
+  features: []
+  bsp:
+    - name: bad-preset
+      description: "both fields set"
+      device: dev
+      release: rel-a
+      releases: [rel-b]
+"""
+        p = tmp_dir / "bad.yaml"
+        p.write_text(bad_yaml)
+        manager = BspManager(config_path=str(p))
+        manager.initialize()
+        with pytest.raises(SystemExit):
+            manager.resolver.list_presets()
+
+    def test_expand_preset_neither_field_exits(self, tmp_dir):
+        """expand_preset() exits when neither release nor releases is set."""
+        bad_yaml = """
+specification:
+  version: "2.0"
+containers:
+  c:
+    image: "test:latest"
+    file: null
+    args: []
+registry:
+  devices:
+    - slug: dev
+      description: "d"
+      vendor: v
+      soc_vendor: s
+      includes: []
+  releases:
+    - slug: rel-a
+      description: "r"
+      includes: []
+  features: []
+  bsp:
+    - name: bad-preset
+      description: "no release field"
+      device: dev
+"""
+        p = tmp_dir / "bad.yaml"
+        p.write_text(bad_yaml)
+        manager = BspManager(config_path=str(p))
+        manager.initialize()
+        with pytest.raises(SystemExit):
+            manager.resolver.list_presets()

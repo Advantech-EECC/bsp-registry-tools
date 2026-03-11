@@ -556,6 +556,8 @@ Named presets are convenience shortcuts for a device + release + features
 combination.  They are optional — builds can also be triggered by passing
 `--device`/`--release` flags directly on the CLI.
 
+### Single-release preset
+
 ```yaml
 registry:
   bsp:
@@ -578,6 +580,31 @@ registry:
         path: build/imx8mp-adv-scarthgap-ota  # optional path override; auto-composed if absent
 ```
 
+### Multi-release preset (simplified syntax)
+
+When the same device and feature set should target several releases, use the
+`releases` (plural) list instead of repeating the entry:
+
+```yaml
+registry:
+  bsp:
+    # This single entry expands into:
+    #   imx8mp-adv-scarthgap  →  build/poky-imx8mp-adv-scarthgap
+    #   imx8mp-adv-styhead    →  build/poky-imx8mp-adv-styhead
+    - name: imx8mp-adv
+      description: "Advantech i.MX8MP baseline"
+      device: imx8mp-adv
+      releases: [scarthgap, styhead]   # expands into one preset per release slug
+      features: []
+      build:
+        container: "debian-bookworm"   # container override is preserved per expansion;
+                                       # build path is always auto-composed
+```
+
+> **Note**: `release` (singular) and `releases` (plural) are mutually exclusive.
+> Exactly one must be specified per preset entry.  When `releases` is used the
+> expanded preset names follow the pattern `{name}-{release_slug}`.
+
 ### `bsp[*]` fields
 
 | Field         | Type          | Description                                                                     |
@@ -585,7 +612,8 @@ registry:
 | `name`        | string        | Unique preset name (referenced by CLI `bsp build <name>`)                       |
 | `description` | string        | Human-readable description                                                      |
 | `device`      | string        | Device slug (references `devices[*].slug`)                                      |
-| `release`     | string        | Release slug (references `releases[*].slug`)                                    |
+| `release`     | string (opt.) | Single release slug (mutually exclusive with `releases`)                        |
+| `releases`    | list[str] (opt.) | List of release slugs; expanded into one preset per entry (mutually exclusive with `release`) |
 | `features`    | list[str]     | Optional list of feature slugs to enable (references `features[*].slug`)        |
 | `build`       | object (opt.) | Optional build overrides (container and/or output path)                         |
 
@@ -594,7 +622,7 @@ registry:
 | Field       | Type          | Description                                                                       |
 |-------------|---------------|-----------------------------------------------------------------------------------|
 | `container` | string (opt.) | Container name override (key in `containers` section). When absent the container is taken from the release's named environment (or `"default"`). |
-| `path`      | string (opt.) | Build output directory. When absent the path is auto-composed as `build/<distro>-<device>-<release>[-<feature>…]`. |
+| `path`      | string (opt.) | Build output directory. When absent the path is auto-composed as `build/<distro>-<device>-<release>[-<feature>…]`. Ignored when `releases` (plural) is used — the path is always auto-composed for expanded presets. |
 
 ### KAS file ordering
 

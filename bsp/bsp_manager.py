@@ -108,9 +108,12 @@ class BspManager:
 
         In v2, presets are optional shortcuts. If no presets are defined,
         a helpful message is shown instead of exiting with an error.
+
+        Presets that use the ``releases`` list are expanded and shown as
+        individual entries (one per release).
         """
-        presets = self.model.registry.bsp if self.model else []
-        if not presets:
+        raw_presets = self.model.registry.bsp if self.model else []
+        if not raw_presets:
             print("No BSP presets defined in registry")
             print(
                 "Use 'bsp list devices', 'bsp list releases', or "
@@ -118,6 +121,7 @@ class BspManager:
             )
             return
 
+        presets = self.resolver.list_presets()
         print("Available BSP presets:")
         for preset in presets:
             features_str = (
@@ -250,6 +254,9 @@ class BspManager:
         """
         Retrieve a BSP preset configuration by name.
 
+        Presets that use the ``releases`` list are expanded first; the
+        caller must use the expanded name (``{name}-{release_slug}``).
+
         Args:
             bsp_name: Name of the preset to retrieve
 
@@ -259,12 +266,12 @@ class BspManager:
         Raises:
             SystemExit: If preset with given name is not found
         """
-        for preset in self.model.registry.bsp or []:
+        for preset in self.resolver.list_presets():
             if preset.name == bsp_name:
                 return preset
 
         logging.error(f"BSP preset not found: '{bsp_name}'")
-        available = [p.name for p in (self.model.registry.bsp or [])]
+        available = [p.name for p in self.resolver.list_presets()]
         print("Available presets: " + (", ".join(available) or "(none)"))
         sys.exit(1)
 

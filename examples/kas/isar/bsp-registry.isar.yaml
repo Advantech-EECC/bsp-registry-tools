@@ -123,40 +123,13 @@ registry:
 
   bsp:
 
-    # --- QEMU ARM64 Isar ---
-    - name: isar-qemuarm64-ubuntu-noble
-      description: "Isar v0.11 QEMU ARM64"
-      device: qemuarm64
-      release: ubuntu-noble
-      features: [users, wic, isar-ssh]
-      build:
-        container: "isar-debian-trixie"
-        path: build/isar-qemuarm64-ubuntu-noble
-
-    # --- QEMU X86-64 Isar ---
-    - name: isar-qemux86-64-ubuntu-noble
-      description: "Isar v0.11 QEMU x86-64 (Ubuntu Noble)"
+    # Multi-release preset for QEMU AMD64 (x86-64): expands into
+    # isar-qemuamd64-ubuntu-noble and isar-qemuamd64-debian-trixie,
+    # eliminating duplicate entries for each supported target OS release.
+    - name: isar-qemuamd64
+      description: "Isar v0.11 QEMU AMD64 (x86-64)"
       device: qemuamd64
-      release: ubuntu-noble
+      releases: [ubuntu-noble, debian-trixie]
       features: [users, wic, isar-ssh]
       build:
         container: "isar-debian-trixie"
-        path: build/isar-qemux86-64-ubuntu-noble
-
-    - name: isar-qemux86-64-debian-trixie
-      description: "Isar v0.11 QEMU x86-64 (Debian Trixie)"
-      device: qemuamd64
-      release: debian-trixie
-      features: [users, wic, isar-ssh]
-      build:
-        container: "isar-debian-trixie"
-        path: build/isar-qemux86-64-debian-trixie
-
-    - name: isar-qemuarm64-debian-trixie
-      description: "Isar v0.11 QEMU ARM64 (Debian Trixie)"
-      device: qemuarm64
-      release: debian-trixie
-      features: [users, wic, isar-ssh]
-      build:
-        container: "isar-debian-trixie"
-        path: build/isar-qemuarm64-debian-trixie

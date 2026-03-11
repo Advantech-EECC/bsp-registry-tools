@@ -470,6 +470,93 @@ class V2Resolver:
             parts.append(feature.slug)
         return "build/" + "-".join(p for p in parts if p)
 
+    def expand_preset(self, preset: BspPreset) -> List[BspPreset]:
+        """
+        Expand a ``BspPreset`` into one or more concrete presets.
+
+        * If the preset uses the singular ``release`` field it is returned as-is
+          (wrapped in a list).
+        * If the preset uses the plural ``releases`` field it is expanded into
+          one preset per release slug.  Each expanded preset is named
+          ``{preset.name}-{release_slug}`` and its ``build.path`` is always
+          auto-composed (ignored even if set on the original entry).
+
+        Validation:
+        * Exactly one of ``release`` / ``releases`` must be set.
+        * Having both or neither set is an error.
+
+        Args:
+            preset: The BSP preset entry to expand.
+
+        Returns:
+            List of one or more concrete ``BspPreset`` objects with a
+            single ``release`` field each.
+
+        Raises:
+            SystemExit: If the preset has neither or both of ``release`` /
+                        ``releases``.
+        """
+        has_single = bool(preset.release)
+        has_multi = bool(preset.releases)
+
+        if has_single and has_multi:
+            self.logger.error(
+                f"BSP preset '{preset.name}' specifies both 'release' and "
+                f"'releases' – use exactly one of these fields"
+            )
+            sys.exit(1)
+
+        if not has_single and not has_multi:
+            self.logger.error(
+                f"BSP preset '{preset.name}' must specify either 'release' "
+                f"(single) or 'releases' (list of release slugs)"
+            )
+            sys.exit(1)
+
+        if has_single:
+            return [preset]
+
+        # Expand multi-release preset
+        expanded: List[BspPreset] = []
+        for release_slug in preset.releases:
+            # Build section: keep container override but drop explicit path so
+            # it is always auto-composed per-release.
+            if preset.build and preset.build.path:
+                expanded_build = BspBuild(
+                    container=preset.build.container,
+                    path=None,
+                )
+            else:
+                expanded_build = preset.build
+
+            expanded.append(
+                BspPreset(
+                    name=f"{preset.name}-{release_slug}",
+                    description=preset.description,
+                    device=preset.device,
+                    release=release_slug,
+                    releases=[],
+                    features=list(preset.features),
+                    build=expanded_build,
+                )
+            )
+        return expanded
+
+    def list_presets(self) -> List[BspPreset]:
+        """
+        Return all concrete BSP presets, expanding any multi-release entries.
+
+        Each preset that uses the ``releases`` list is expanded into one
+        concrete preset per release (see :meth:`expand_preset`).
+
+        Returns:
+            Flat list of concrete ``BspPreset`` objects.
+        """
+        result: List[BspPreset] = []
+        for preset in self.model.registry.bsp or []:
+            result.extend(self.expand_preset(preset))
+        return result
+
     def resolve_preset(self, preset_name: str) -> Tuple[ResolvedConfig, BspPreset]:
         """
         Resolve a named BSP preset to a ResolvedConfig.
@@ -486,6 +573,9 @@ class V2Resolver:
         release's named environment (or ``"default"``) and the path is
         auto-composed.
 
+        Presets that use the ``releases`` list are expanded first; the
+        caller must use the expanded name (``{name}-{release_slug}``).
+
         Args:
             preset_name: Name of the preset in registry.bsp
 
@@ -496,14 +586,14 @@ class V2Resolver:
             SystemExit: If preset is not found
         """
         preset: Optional[BspPreset] = None
-        for p in self.model.registry.bsp or []:
+        for p in self.list_presets():
             if p.name == preset_name:
                 preset = p
                 break
 
         if preset is None:
             self.logger.error(f"BSP preset not found: '{preset_name}'")
-            available = [p.name for p in (self.model.registry.bsp or [])]
+            available = [p.name for p in self.list_presets()]
             self.logger.info(
                 "Available presets: " + (", ".join(available) or "(none)")
             )
