@@ -274,6 +274,13 @@ class Distro:
         description: Human-readable description
         vendor: Distro vendor/maintainer name (e.g., 'yocto', 'siemens')
         includes: KAS configuration files that configure this distro
+        vendor_includes: Vendor-specific KAS includes for this distro.  The
+                         resolver selects the entries whose ``vendor`` field
+                         matches the board vendor of the device being built and
+                         appends their includes after ``distro.includes`` but
+                         before ``release.includes``.  This avoids repeating
+                         the same vendor-specific BSP layer configuration in
+                         every release entry.
         framework: Optional slug of the build-system framework this distro
                    is based on (references ``Registry.frameworks``).  Used
                    by ``Feature.compatible_with`` checks.
@@ -282,6 +289,7 @@ class Distro:
     description: str
     vendor: str = ""
     includes: List[str] = field(default_factory=empty_list)
+    vendor_includes: List[VendorIncludes] = field(default_factory=empty_list)
     framework: Optional[str] = None
 
 

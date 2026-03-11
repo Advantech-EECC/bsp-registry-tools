@@ -789,3 +789,91 @@ def registry_with_multi_release_bsp_file(tmp_dir):
     registry_path = tmp_dir / "bsp-registry.yaml"
     registry_path.write_text(REGISTRY_WITH_MULTI_RELEASE_BSP_YAML)
     return registry_path
+
+
+REGISTRY_WITH_VENDOR_INCLUDES_YAML = """
+specification:
+  version: "2.0"
+containers:
+  debian-bookworm:
+    image: "test/debian:bookworm"
+    file: null
+    args: []
+registry:
+  distro:
+    - slug: poky
+      description: "Poky (Yocto Project reference distro)"
+      vendor: yocto
+      includes:
+        - kas/poky/distro/poky.yaml
+      vendor_includes:
+        - vendor: advantech
+          includes:
+            - vendors/advantech/distro-common.yml
+  devices:
+    - slug: adv-imx8
+      description: "Advantech i.MX8 Board"
+      vendor: advantech
+      soc_vendor: nxp
+      includes:
+        - kas/adv-imx8.yaml
+    - slug: qemu-arm64
+      description: "QEMU ARM64"
+      vendor: qemu
+      soc_vendor: arm
+      includes:
+        - kas/qemu/qemuarm64.yaml
+  releases:
+    - slug: scarthgap
+      distro: poky
+      description: "Yocto 5.0 LTS (Scarthgap)"
+      yocto_version: "5.0"
+      includes:
+        - kas/poky/scarthgap.yaml
+      vendor_includes:
+        - vendor: advantech
+          includes:
+            - vendors/advantech/nxp/imx-6.6.52-2.2.0-scarthgap.yml
+    - slug: kirkstone
+      distro: poky
+      description: "Yocto 4.0 LTS (Kirkstone)"
+      yocto_version: "4.0"
+      includes:
+        - kas/poky/kirkstone.yaml
+      vendor_includes:
+        - vendor: advantech
+          includes:
+            - vendors/advantech/nxp/imx-5.15.52-2.1.0-kirkstone.yml
+    - slug: generic-release
+      distro: poky
+      description: "Generic release without vendor includes"
+      yocto_version: "5.0"
+      includes:
+        - kas/poky/generic.yaml
+  features: []
+  bsp:
+    - name: adv-imx8-scarthgap
+      description: "Advantech i.MX8 Scarthgap BSP"
+      device: adv-imx8
+      release: scarthgap
+      features: []
+      build:
+        container: "debian-bookworm"
+        path: build/adv-imx8-scarthgap
+    - name: qemu-arm64-scarthgap
+      description: "QEMU ARM64 Scarthgap BSP"
+      device: qemu-arm64
+      release: scarthgap
+      features: []
+      build:
+        container: "debian-bookworm"
+        path: build/qemu-arm64-scarthgap
+"""
+
+
+@pytest.fixture
+def registry_with_vendor_includes_file(tmp_dir):
+    """Create a registry YAML file with vendor_includes on distro and release."""
+    registry_path = tmp_dir / "bsp-registry.yaml"
+    registry_path.write_text(REGISTRY_WITH_VENDOR_INCLUDES_YAML)
+    return registry_path

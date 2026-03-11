@@ -315,6 +315,27 @@ class V2Resolver:
     # Core resolver
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _collect_vendor_includes(
+        vendor_includes_list: List, device_vendor: str
+    ) -> List[str]:
+        """
+        Return KAS include paths from *vendor_includes_list* that match
+        *device_vendor*.
+
+        Args:
+            vendor_includes_list: List of ``VendorIncludes`` entries.
+            device_vendor: Board vendor of the device being resolved.
+
+        Returns:
+            Flat list of KAS file paths for the matching vendor entries.
+        """
+        result: List[str] = []
+        for vi in vendor_includes_list:
+            if vi.vendor == device_vendor:
+                result.extend(vi.includes)
+        return result
+
     def resolve(
         self,
         device_slug: str,
@@ -324,7 +345,10 @@ class V2Resolver:
         """
         Resolve device + release + features into a ResolvedConfig.
 
-        Merging order for KAS files: framework.includes -> distro.includes -> release.includes -> device.includes -> feature.includes
+        Merging order for KAS files:
+          framework.includes -> distro.includes -> distro.vendor_includes[device.vendor]
+          -> release.includes -> release.vendor_includes[device.vendor]
+          -> device.includes -> feature.includes
         Merging order for local_conf:  device.local_conf -> feature.local_conf (in order)
 
         Args:
@@ -381,7 +405,9 @@ class V2Resolver:
                 sys.exit(1)
 
         # Build ordered KAS file list
-        # Order: framework.includes -> distro.includes -> release.includes -> device.includes -> feature.includes
+        # Order: framework.includes -> distro.includes -> distro.vendor_includes[vendor]
+        #        -> release.includes -> release.vendor_includes[vendor]
+        #        -> device.includes -> feature.includes
         # Prefer device.includes (new style); fall back to device.build.includes (legacy).
         kas_files: List[str] = []
         if release.distro:
@@ -390,7 +416,9 @@ class V2Resolver:
                 framework_obj = self.get_framework(distro_obj.framework)
                 kas_files.extend(framework_obj.includes)
             kas_files.extend(distro_obj.includes)
+            kas_files.extend(self._collect_vendor_includes(distro_obj.vendor_includes, device.vendor))
         kas_files.extend(release.includes)
+        kas_files.extend(self._collect_vendor_includes(release.vendor_includes, device.vendor))
         device_includes = device.includes if device.includes else (
             device.build.includes if device.build else []
         )

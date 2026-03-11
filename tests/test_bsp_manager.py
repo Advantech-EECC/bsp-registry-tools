@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from bsp import BspManager, BspPreset, Docker, V2Resolver
-from .conftest import EMPTY_REGISTRY_YAML, REGISTRY_WITH_FEATURES_YAML, REGISTRY_WITH_FRAMEWORKS_YAML
+from .conftest import EMPTY_REGISTRY_YAML, REGISTRY_WITH_FEATURES_YAML, REGISTRY_WITH_FRAMEWORKS_YAML, REGISTRY_WITH_VENDOR_INCLUDES_YAML
 
 
 class TestBspManagerInit:
@@ -1225,3 +1225,107 @@ registry:
         manager.initialize()
         with pytest.raises(SystemExit):
             manager.resolver.list_presets()
+
+
+class TestVendorIncludes:
+    """Tests for vendor_includes on Release and Distro."""
+
+    def test_release_vendor_includes_applied_for_matching_vendor(
+        self, registry_with_vendor_includes_file
+    ):
+        """Vendor includes from a release are added to KAS files for a matching device vendor."""
+        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("adv-imx8", "scarthgap")
+        assert "vendors/advantech/nxp/imx-6.6.52-2.2.0-scarthgap.yml" in resolved.kas_files
+
+    def test_release_vendor_includes_not_applied_for_other_vendor(
+        self, registry_with_vendor_includes_file
+    ):
+        """Vendor includes from a release are NOT added for a device with a different vendor."""
+        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("qemu-arm64", "scarthgap")
+        assert "vendors/advantech/nxp/imx-6.6.52-2.2.0-scarthgap.yml" not in resolved.kas_files
+
+    def test_distro_vendor_includes_applied_for_matching_vendor(
+        self, registry_with_vendor_includes_file
+    ):
+        """Vendor includes from a distro are added to KAS files for a matching device vendor."""
+        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("adv-imx8", "scarthgap")
+        assert "vendors/advantech/distro-common.yml" in resolved.kas_files
+
+    def test_distro_vendor_includes_not_applied_for_other_vendor(
+        self, registry_with_vendor_includes_file
+    ):
+        """Distro vendor includes are NOT added for a device with a different vendor."""
+        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("qemu-arm64", "scarthgap")
+        assert "vendors/advantech/distro-common.yml" not in resolved.kas_files
+
+    def test_vendor_includes_maintain_correct_kas_file_order(self, registry_with_vendor_includes_file):
+        """KAS file order: distro.includes -> distro.vendor_includes -> release.includes
+        -> release.vendor_includes -> device.includes."""
+        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("adv-imx8", "scarthgap")
+        kas = resolved.kas_files
+        idx_distro = kas.index("kas/poky/distro/poky.yaml")
+        idx_distro_vendor = kas.index("vendors/advantech/distro-common.yml")
+        idx_release = kas.index("kas/poky/scarthgap.yaml")
+        idx_release_vendor = kas.index("vendors/advantech/nxp/imx-6.6.52-2.2.0-scarthgap.yml")
+        idx_device = kas.index("kas/adv-imx8.yaml")
+        assert idx_distro < idx_distro_vendor < idx_release < idx_release_vendor < idx_device
+
+    def test_release_without_vendor_includes_unaffected(
+        self, registry_with_vendor_includes_file
+    ):
+        """A release with no vendor_includes resolves normally for any device vendor."""
+        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("adv-imx8", "generic-release")
+        assert "kas/poky/generic.yaml" in resolved.kas_files
+        # No vendor-specific files should appear
+        assert "vendors/advantech/nxp/imx-6.6.52-2.2.0-scarthgap.yml" not in resolved.kas_files
+
+    def test_list_releases_filters_by_device_vendor(
+        self, registry_with_vendor_includes_file, capsys
+    ):
+        """list_releases with device_slug filters out releases that have no matching vendor."""
+        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        manager.initialize()
+        manager.list_releases(device_slug="adv-imx8")
+        captured = capsys.readouterr()
+        # scarthgap and kirkstone have advantech vendor_includes -> shown
+        assert "scarthgap" in captured.out
+        assert "kirkstone" in captured.out
+        # generic-release has no vendor_includes -> also shown (generic = all vendors)
+        assert "generic-release" in captured.out
+
+    def test_list_releases_filters_out_non_matching_vendor(
+        self, registry_with_vendor_includes_file, capsys
+    ):
+        """list_releases with qemu device_slug excludes releases that only have advantech includes."""
+        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        manager.initialize()
+        manager.list_releases(device_slug="qemu-arm64")
+        captured = capsys.readouterr()
+        # scarthgap and kirkstone only have advantech vendor_includes -> excluded for qemu
+        assert "scarthgap" not in captured.out
+        assert "kirkstone" not in captured.out
+        # generic-release has no vendor_includes -> shown for all devices
+        assert "generic-release" in captured.out
+
+    def test_distro_vendor_includes_loaded_from_yaml(
+        self, registry_with_vendor_includes_file
+    ):
+        """Distro vendor_includes field is correctly parsed from YAML."""
+        manager = BspManager(config_path=str(registry_with_vendor_includes_file))
+        manager.initialize()
+        distro = manager.resolver.get_distro("poky")
+        assert len(distro.vendor_includes) == 1
+        assert distro.vendor_includes[0].vendor == "advantech"
+        assert "vendors/advantech/distro-common.yml" in distro.vendor_includes[0].includes
