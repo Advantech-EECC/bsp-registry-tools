@@ -368,7 +368,7 @@ environments:
 
 ### `copy` (optional)
 
-Global file-copy entries executed **before every build** in the registry, regardless of device, release, or environment.
+Global file-copy entries executed inside the **build environment** before every build, regardless of device, release, or environment.  Files are placed in the build workspace (the project root mounted inside the container) so they are accessible during the build.
 
 ```yaml
 copy:

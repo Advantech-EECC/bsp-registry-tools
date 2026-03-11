@@ -287,12 +287,17 @@ class BspManager:
 
     def _copy_files(self, resolved: ResolvedConfig) -> None:
         """
-        Copy files specified in ``device.build.copy`` into their destinations.
+        Copy files into the build environment before the build starts.
 
         Each entry in ``resolved.copy`` is a single-key dict mapping a source
         path to a destination path.  Both paths are resolved relative to the
-        registry file's parent directory.  If the destination ends with ``/``
-        or is an existing directory the source filename is preserved inside it.
+        registry file's parent directory (the project root that is mounted
+        inside the container).  If the destination ends with ``/`` or is an
+        existing directory the source filename is preserved inside it.
+
+        The copied files are placed in the build workspace — the directory
+        tree that is mounted into the build container — so they are accessible
+        inside the container during the build.
 
         Args:
             resolved: Resolved build configuration containing copy entries.

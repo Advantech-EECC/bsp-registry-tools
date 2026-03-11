@@ -171,14 +171,16 @@ environment:
 
 ## `copy` (optional)
 
-Global file-copy entries executed **before every build** in the registry.
-This is useful for scripts or configuration files that must be present in the
-build tree regardless of the device, release, or environment.
+Global file-copy entries executed inside the **build environment** before every
+build in the registry.  Files are placed in the build workspace — the project
+tree that is mounted inside the container — so they are available during the
+build regardless of device, release, or environment.
 
 Each entry is a single-key dict mapping a source path to a destination path.
-Both paths are resolved relative to the registry file's parent directory.
-If the destination ends with `/` or is an existing directory, the source
-filename is preserved inside it.
+Both paths are resolved relative to the registry file's parent directory (the
+project root).  The destination should be within the build workspace (e.g.
+`build/`).  If the destination ends with `/` or is an existing directory, the
+source filename is preserved inside it.
 
 ```yaml
 copy:
@@ -265,7 +267,7 @@ environments:
 |-------------|----------------------|-----------------------------------------------------------------------------------------------|
 | `container` | string (opt.)        | Container name (references `containers` section). Used when the device has no container set. |
 | `variables` | list (opt.)          | Environment variables merged on top of the root `environment` list.                           |
-| `copy`      | list[dict] (opt.)    | File-copy entries executed before every build that uses this environment. Same format as `Device.copy` and root-level `copy`. |
+| `copy`      | list[dict] (opt.)    | File-copy entries executed inside the build environment before every build that uses this environment. Files are placed in the build workspace (project root mounted inside the container). Same format as `Device.copy` and root-level `copy`. |
 
 ### Resolution rules
 
@@ -293,14 +295,17 @@ Feature-level `env` variables are applied last.
 ### Copy merge order
 
 File-copy entries from all three levels are **concatenated** in the following
-order before any copying takes place:
+order before the build starts:
 
 ```
 root-level copy → named environment copy → device copy
 ```
 
-This means root-level copies always execute first (shared setup), then any
-environment-specific copies, and finally device-specific copies.
+All entries are executed inside the build environment — files are placed in the
+build workspace (the project root that is mounted inside the container) so they
+are accessible during the build.  Root-level copies always execute first
+(shared setup), then environment-specific copies, and finally device-specific
+copies.
 
 ---
 
@@ -424,7 +429,7 @@ registry:
 | `soc_family` | string (opt.)        | SoC family identifier (used in feature compatibility checks)                |
 | `includes`   | list[str]            | Device-specific KAS configuration files                                     |
 | `local_conf` | list[str]            | Lines appended to `local.conf` for this device                              |
-| `copy`       | list[dict[str, str]] | Files to copy into the build tree before the build starts. Each entry is a single-key dict `{"source": "destination"}`. Both paths are resolved relative to the registry file's parent directory. If the destination ends with `/` or is an existing directory, the source filename is preserved. |
+| `copy`       | list[dict[str, str]] | Files to copy into the build environment before the build starts. Each entry is a single-key dict `{"source": "destination"}`. Both paths are resolved relative to the registry file's parent directory (the project root mounted inside the container). The destination should be within the build workspace. If the destination ends with `/` or is an existing directory, the source filename is preserved. |
 
 > **Note on build output path and container:** In v2.0 the container and output path are **optional** preset-level overrides configured in the preset's `build:` block (see [`registry.bsp`](#registrybsp-optional-presets) below).  When `build:` is absent, or when individual fields are omitted, the container falls back to the release's named environment (or `"default"`), and the path is auto-composed as `build/<distro>-<device>-<release>`.  New registries should use the flat `includes`/`local_conf`/`copy` fields directly on the device instead of the legacy `device.build:` nested block.
 
