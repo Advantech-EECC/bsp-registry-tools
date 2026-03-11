@@ -876,3 +876,118 @@ class TestDistros:
         distro_idx = resolved.kas_files.index("kas/poky/distro/poky.yaml")
         release_idx = resolved.kas_files.index("kas/poky/scarthgap.yaml")
         assert distro_idx < release_idx
+
+
+# =============================================================================
+# Tests for copy field on named environments
+# =============================================================================
+
+class TestNamedEnvironmentCopy:
+    def test_named_env_copy_field_parsed(self, registry_with_named_env_copy_file):
+        """copy field on a named environment is parsed from YAML."""
+        manager = BspManager(config_path=str(registry_with_named_env_copy_file))
+        manager.initialize()
+        env = manager.model.environments["isar-env"]
+        assert len(env.copy) == 1
+        assert env.copy[0] == {"isar/scripts/isar-runqemu.sh": "build/isar/"}
+
+    def test_default_named_env_copy_field_parsed(self, registry_with_named_env_copy_file):
+        """copy field on the default named environment is parsed from YAML."""
+        manager = BspManager(config_path=str(registry_with_named_env_copy_file))
+        manager.initialize()
+        env = manager.model.environments["default"]
+        assert len(env.copy) == 1
+        assert env.copy[0] == {"scripts/env-setup.sh": "build/"}
+
+    def test_named_env_copy_propagated_to_resolved(self, registry_with_named_env_copy_file):
+        """Named environment copy entries appear in ResolvedConfig.copy."""
+        manager = BspManager(config_path=str(registry_with_named_env_copy_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("isar-board", "isar-v0.11")
+        copy_sources = [list(e.keys())[0] for e in resolved.copy]
+        assert "isar/scripts/isar-runqemu.sh" in copy_sources
+
+    def test_default_env_copy_propagated_to_resolved(self, registry_with_named_env_copy_file):
+        """Default environment copy entries appear in resolved config for releases using default."""
+        manager = BspManager(config_path=str(registry_with_named_env_copy_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("qemu-arm64", "scarthgap")
+        copy_sources = [list(e.keys())[0] for e in resolved.copy]
+        assert "scripts/env-setup.sh" in copy_sources
+
+    def test_no_copy_in_named_env_gives_empty(self, registry_with_named_env_file):
+        """When no copy is set on a named environment, resolved.copy is empty."""
+        manager = BspManager(config_path=str(registry_with_named_env_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("qemu-arm64", "scarthgap")
+        assert resolved.copy == []
+
+    def test_named_env_copy_files_executed(self, registry_with_named_env_copy_file):
+        """_copy_files executes copies coming from the named environment."""
+        manager = BspManager(config_path=str(registry_with_named_env_copy_file))
+        manager.initialize()
+
+        base = registry_with_named_env_copy_file.parent
+        # Create source files
+        (base / "isar" / "scripts").mkdir(parents=True, exist_ok=True)
+        src = base / "isar" / "scripts" / "isar-runqemu.sh"
+        src.write_text("#!/bin/sh\n")
+        (base / "build" / "isar").mkdir(parents=True, exist_ok=True)
+
+        resolved = manager.resolver.resolve("isar-board", "isar-v0.11")
+        manager._copy_files(resolved)
+
+        assert (base / "build" / "isar" / "isar-runqemu.sh").exists()
+
+
+# =============================================================================
+# Tests for global (root-level) copy field
+# =============================================================================
+
+class TestGlobalCopy:
+    def test_global_copy_field_parsed(self, registry_with_global_copy_file):
+        """Root-level copy field is parsed from YAML."""
+        manager = BspManager(config_path=str(registry_with_global_copy_file))
+        manager.initialize()
+        assert len(manager.model.copy) == 1
+        assert manager.model.copy[0] == {"global/setup.sh": "build/"}
+
+    def test_global_copy_propagated_to_resolved(self, registry_with_global_copy_file):
+        """Global copy entries appear in ResolvedConfig.copy."""
+        manager = BspManager(config_path=str(registry_with_global_copy_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("qemu-arm64", "scarthgap")
+        copy_sources = [list(e.keys())[0] for e in resolved.copy]
+        assert "global/setup.sh" in copy_sources
+
+    def test_global_copy_is_empty_by_default(self, registry_file):
+        """RegistryRoot.copy is empty when not specified."""
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        assert manager.model.copy == []
+
+    def test_global_copy_order_before_device_copy(self, registry_with_global_copy_file):
+        """Global copy entries come before device-level copy entries in resolved.copy."""
+        manager = BspManager(config_path=str(registry_with_global_copy_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("qemu-arm64", "scarthgap")
+        copy_sources = [list(e.keys())[0] for e in resolved.copy]
+        assert copy_sources.index("global/setup.sh") < copy_sources.index("device/config.sh")
+
+    def test_global_copy_files_executed(self, registry_with_global_copy_file):
+        """_copy_files executes global copy entries."""
+        manager = BspManager(config_path=str(registry_with_global_copy_file))
+        manager.initialize()
+
+        base = registry_with_global_copy_file.parent
+        (base / "global").mkdir(parents=True, exist_ok=True)
+        (base / "global" / "setup.sh").write_text("#!/bin/sh\n")
+        (base / "device").mkdir(parents=True, exist_ok=True)
+        (base / "device" / "config.sh").write_text("#!/bin/sh\n")
+        (base / "build").mkdir(parents=True, exist_ok=True)
+
+        resolved = manager.resolver.resolve("qemu-arm64", "scarthgap")
+        manager._copy_files(resolved)
+
+        assert (base / "build" / "setup.sh").exists()
+        assert (base / "build" / "config.sh").exists()

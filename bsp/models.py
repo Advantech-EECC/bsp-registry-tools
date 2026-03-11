@@ -106,9 +106,14 @@ class NamedEnvironment:
                    ``build.container`` must be set.
         variables: Environment variables provided by this environment
                    (merged on top of the root-level ``environment`` list).
+        copy: List of ``{source: destination}`` file-copy entries executed
+              before every build that uses this environment.  Both paths are
+              resolved relative to the registry file's parent directory.
+              Entries are prepended before any device-level copy entries.
     """
     container: Optional[str] = None
     variables: List[EnvironmentVariable] = field(default_factory=empty_list)
+    copy: List[Dict[str, str]] = field(default_factory=empty_list)
 
 
 @dataclass
@@ -392,9 +397,14 @@ class RegistryRoot:
                       bundles a container reference and environment variables.
                       The special name ``"default"`` is applied to any release
                       that does not explicitly name an environment.
+        copy: Global list of ``{source: destination}`` file-copy entries
+              executed before every build.  Both paths are resolved relative
+              to the registry file's parent directory.  These entries are
+              applied first, before named-environment and device-level entries.
     """
     specification: Specification
     registry: Registry
     containers: Optional[Dict[str, Docker]] = field(default_factory=empty_dict)
     environment: Optional[List[EnvironmentVariable]] = field(default_factory=empty_list)
     environments: Optional[Dict[str, NamedEnvironment]] = field(default_factory=empty_dict)
+    copy: List[Dict[str, str]] = field(default_factory=empty_list)

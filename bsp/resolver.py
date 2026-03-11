@@ -44,8 +44,10 @@ class ResolvedConfig:
         container: Docker configuration for the build environment
         local_conf: Combined local.conf lines from device and features
         env: Combined environment variables from features
-        copy: List of ``{source: destination}`` file-copy entries from the
-              device build configuration (resolved relative to registry dir).
+        copy: Ordered list of ``{source: destination}`` file-copy entries
+              resolved from the global registry copy, the active named
+              environment copy, and the device-level copy (in that order).
+              All paths are relative to the registry file's parent directory.
     """
     device: Device
     release: Release
@@ -418,10 +420,16 @@ class V2Resolver:
         # empty (resolve_preset will fill it in, or caller must set it).
         build_path = device.build.path if device.build else ""
 
-        # Copy entries: prefer device.copy (new style); fall back to device.build.copy (legacy).
+        # Copy entries merged in order (lowest to highest priority):
+        #   1. Global registry-level copy (applies to every build)
+        #   2. Named environment copy (applies when this env is active)
+        #   3. Device-level copy (prefer device.copy; fall back to legacy device.build.copy)
+        global_copy = list(self.model.copy) if self.model.copy else []
+        named_env_copy = list(named_env.copy) if named_env and named_env.copy else []
         device_copy = device.copy if device.copy else (
             device.build.copy if device.build else []
         )
+        merged_copy = global_copy + named_env_copy + list(device_copy)
 
         return ResolvedConfig(
             device=device,
@@ -432,7 +440,7 @@ class V2Resolver:
             container=container,
             local_conf=local_conf,
             env=env,
-            copy=list(device_copy),
+            copy=merged_copy,
         )
 
     def _compose_build_path(self, resolved: ResolvedConfig) -> str:

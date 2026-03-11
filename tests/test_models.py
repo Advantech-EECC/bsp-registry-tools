@@ -116,6 +116,7 @@ class TestV2DataClasses:
         env = NamedEnvironment()
         assert env.container is None
         assert env.variables == []
+        assert env.copy == []
 
     def test_named_environment_with_container(self):
         env = NamedEnvironment(container="my-container")
@@ -125,6 +126,11 @@ class TestV2DataClasses:
         var = EnvironmentVariable(name="K", value="V")
         env = NamedEnvironment(variables=[var])
         assert len(env.variables) == 1
+
+    def test_named_environment_with_copy(self):
+        env = NamedEnvironment(copy=[{"src/script.sh": "build/"}])
+        assert len(env.copy) == 1
+        assert env.copy[0] == {"src/script.sh": "build/"}
 
     def test_device_build_defaults(self):
         build = DeviceBuild()
@@ -285,6 +291,18 @@ class TestV2DataClasses:
         assert root.containers == {}
         assert root.environment == []
         assert root.environments == {}
+        assert root.copy == []
+
+    def test_registry_root_with_copy(self):
+        spec = Specification(version="2.0")
+        reg = Registry()
+        root = RegistryRoot(
+            specification=spec,
+            registry=reg,
+            copy=[{"global/setup.sh": "build/"}],
+        )
+        assert len(root.copy) == 1
+        assert root.copy[0] == {"global/setup.sh": "build/"}
 
     def test_distro_defaults(self):
         distro = Distro(slug="poky", description="Poky reference distro", vendor="yocto")

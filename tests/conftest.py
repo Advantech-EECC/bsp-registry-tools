@@ -281,6 +281,120 @@ registry:
         path: build/isar-qemu
 """
 
+REGISTRY_WITH_NAMED_ENV_COPY_YAML = """
+specification:
+  version: "2.0"
+
+environments:
+  default:
+    container: "debian-bookworm"
+    variables:
+      - name: "DL_DIR"
+        value: "/tmp/downloads"
+    copy:
+      - scripts/env-setup.sh: build/
+  isar-env:
+    container: "debian-bookworm-isar"
+    variables:
+      - name: "DL_DIR"
+        value: "/tmp/isar-downloads"
+    copy:
+      - isar/scripts/isar-runqemu.sh: build/isar/
+
+containers:
+  debian-bookworm:
+    image: "test/debian:latest"
+    file: null
+    args: []
+  debian-bookworm-isar:
+    image: "test/debian-isar:latest"
+    file: null
+    args: []
+
+registry:
+  devices:
+    - slug: qemu-arm64
+      description: "QEMU ARM64"
+      vendor: qemu
+      soc_vendor: arm
+      includes:
+        - kas/qemuarm64.yaml
+    - slug: isar-board
+      description: "Isar Board"
+      vendor: acme
+      soc_vendor: arm
+      includes:
+        - kas/isar/board.yaml
+  releases:
+    - slug: scarthgap
+      description: "Yocto 5.0 LTS"
+      yocto_version: "5.0"
+      includes:
+        - kas/scarthgap.yaml
+    - slug: isar-v0.11
+      description: "Isar v0.11"
+      environment: isar-env
+      includes:
+        - kas/isar/v0.11.yaml
+  features: []
+  bsp:
+    - name: qemu-scarthgap
+      description: "QEMU Scarthgap"
+      device: qemu-arm64
+      release: scarthgap
+      features: []
+      build:
+        path: build/qemuarm64
+    - name: isar-v0.11-build
+      description: "Isar v0.11 build"
+      device: isar-board
+      release: isar-v0.11
+      features: []
+      build:
+        path: build/isar-board
+"""
+
+REGISTRY_WITH_GLOBAL_COPY_YAML = """
+specification:
+  version: "2.0"
+
+copy:
+  - global/setup.sh: build/
+
+containers:
+  debian-bookworm:
+    image: "test/debian:latest"
+    file: null
+    args: []
+
+registry:
+  devices:
+    - slug: qemu-arm64
+      description: "QEMU ARM64"
+      vendor: qemu
+      soc_vendor: arm
+      includes:
+        - kas/qemuarm64.yaml
+      copy:
+        - device/config.sh: build/
+  releases:
+    - slug: scarthgap
+      description: "Yocto 5.0 LTS"
+      yocto_version: "5.0"
+      includes:
+        - kas/scarthgap.yaml
+  features: []
+  bsp:
+    - name: qemu-scarthgap
+      description: "QEMU Scarthgap"
+      device: qemu-arm64
+      release: scarthgap
+      features: []
+      build:
+        container: "debian-bookworm"
+        path: build/qemuarm64
+"""
+
 REGISTRY_WITH_RUNTIME_ARGS_YAML = """
 specification:
   version: "2.0"
@@ -523,6 +637,22 @@ def registry_with_copy_file(tmp_dir):
     """Create a registry YAML file with copy entries in device build config."""
     registry_path = tmp_dir / "bsp-registry.yaml"
     registry_path.write_text(REGISTRY_WITH_COPY_YAML)
+    return registry_path
+
+
+@pytest.fixture
+def registry_with_named_env_copy_file(tmp_dir):
+    """Create a registry YAML file with copy entries in named environments."""
+    registry_path = tmp_dir / "bsp-registry.yaml"
+    registry_path.write_text(REGISTRY_WITH_NAMED_ENV_COPY_YAML)
+    return registry_path
+
+
+@pytest.fixture
+def registry_with_global_copy_file(tmp_dir):
+    """Create a registry YAML file with a global (root-level) copy list."""
+    registry_path = tmp_dir / "bsp-registry.yaml"
+    registry_path.write_text(REGISTRY_WITH_GLOBAL_COPY_YAML)
     return registry_path
 
 
