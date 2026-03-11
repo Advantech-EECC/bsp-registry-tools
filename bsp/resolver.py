@@ -424,7 +424,7 @@ class V2Resolver:
         #   1. Global registry-level copy (applies to every build)
         #   2. Named environment copy (applies when this env is active)
         #   3. Device-level copy (prefer device.copy; fall back to legacy device.build.copy)
-        global_copy = list(self.model.copy) if self.model.copy else []
+        global_copy = list(self.model.environment.copy) if self.model.environment and self.model.environment.copy else []
         named_env_copy = list(named_env.copy) if named_env and named_env.copy else []
         device_copy = device.copy if device.copy else (
             device.build.copy if device.build else []

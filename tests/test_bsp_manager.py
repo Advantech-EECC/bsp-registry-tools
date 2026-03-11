@@ -946,11 +946,12 @@ class TestNamedEnvironmentCopy:
 
 class TestGlobalCopy:
     def test_global_copy_field_parsed(self, registry_with_global_copy_file):
-        """Root-level copy field is parsed from YAML."""
+        """Global copy field inside environment section is parsed from YAML."""
         manager = BspManager(config_path=str(registry_with_global_copy_file))
         manager.initialize()
-        assert len(manager.model.copy) == 1
-        assert manager.model.copy[0] == {"global/setup.sh": "build/"}
+        assert manager.model.environment is not None
+        assert len(manager.model.environment.copy) == 1
+        assert manager.model.environment.copy[0] == {"global/setup.sh": "build/"}
 
     def test_global_copy_propagated_to_resolved(self, registry_with_global_copy_file):
         """Global copy entries appear in ResolvedConfig.copy."""
@@ -961,10 +962,10 @@ class TestGlobalCopy:
         assert "global/setup.sh" in copy_sources
 
     def test_global_copy_is_empty_by_default(self, registry_file):
-        """RegistryRoot.copy is empty when not specified."""
+        """RegistryRoot.environment is None (no global copy) when not specified."""
         manager = BspManager(config_path=str(registry_file))
         manager.initialize()
-        assert manager.model.copy == []
+        assert manager.model.environment is None
 
     def test_global_copy_order_before_device_copy(self, registry_with_global_copy_file):
         """Global copy entries come before device-level copy entries in resolved.copy."""

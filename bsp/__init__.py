@@ -53,6 +53,7 @@ from .models import (
     DockerArg,
     Docker,
     Specification,
+    GlobalEnvironment,
     NamedEnvironment,
     DeviceBuild,
     BspBuild,
@@ -103,6 +104,7 @@ __all__ = [
     "Docker",
     "Specification",
     # v2.0 data classes
+    "GlobalEnvironment",
     "DeviceBuild",
     "BspBuild",
     "Device",

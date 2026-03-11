@@ -51,12 +51,13 @@ REGISTRY_WITH_ENV_YAML = """
 specification:
   version: "2.0"
 environment:
-  - name: "DL_DIR"
-    value: "/tmp/downloads"
-  - name: "SSTATE_DIR"
-    value: "/tmp/sstate"
-  - name: "GITCONFIG_FILE"
-    value: "$ENV{HOME}/.gitconfig"
+  variables:
+    - name: "DL_DIR"
+      value: "/tmp/downloads"
+    - name: "SSTATE_DIR"
+      value: "/tmp/sstate"
+    - name: "GITCONFIG_FILE"
+      value: "$ENV{HOME}/.gitconfig"
 containers:
   ubuntu-22.04:
     image: "test/ubuntu-22.04:latest"
@@ -358,8 +359,9 @@ REGISTRY_WITH_GLOBAL_COPY_YAML = """
 specification:
   version: "2.0"
 
-copy:
-  - global/setup.sh: build/
+environment:
+  copy:
+    - global/setup.sh: build/
 
 containers:
   debian-bookworm:

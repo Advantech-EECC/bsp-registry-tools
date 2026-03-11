@@ -57,8 +57,9 @@ class TestYamlParsing:
 
     def test_get_registry_from_yaml_file_with_env(self, registry_with_env_file):
         result = get_registry_from_yaml_file(registry_with_env_file)
-        assert len(result.environment) == 3
-        env_names = [e.name for e in result.environment]
+        assert result.environment is not None
+        assert len(result.environment.variables) == 3
+        env_names = [e.name for e in result.environment.variables]
         assert "DL_DIR" in env_names
         assert "SSTATE_DIR" in env_names
 

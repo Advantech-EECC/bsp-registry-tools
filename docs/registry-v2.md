@@ -37,12 +37,12 @@ include:                  # optional – list of additional registry files to me
   - devices/boards.yaml
   - releases/scarthgap.yaml
 
-environment:              # optional – global env vars for all builds
-  - name: "DL_DIR"
-    value: "$ENV{HOME}/downloads"
-
-copy:                     # optional – global file copies executed before every build
-  - scripts/global-setup.sh: build/
+environment:              # optional – global environment for all builds
+  variables:              # optional – global env vars ($ENV{} expansion supported)
+    - name: "DL_DIR"
+      value: "$ENV{HOME}/downloads"
+  copy:                   # optional – global file copies executed before every build
+    - scripts/global-setup.sh: build/
 
 environments:             # optional – named build environments
   default:                # special name: used when release has no environment field
@@ -154,41 +154,28 @@ validation is performed only once on the root registry file.
 
 ## `environment` (optional)
 
-Global environment variables applied to all builds.  Values support
-`$ENV{VAR}` expansion against the host shell environment.
+Global build environment applied to every build.  It groups two sub-fields:
+
+| Sub-field   | Type               | Description                                                                 |
+|-------------|--------------------|-----------------------------------------------------------------------------|
+| `variables` | list[{name,value}] | Environment variables (supports `$ENV{VAR}` expansion against the host shell environment). |
+| `copy`      | list[dict]         | File-copy entries executed inside the build environment before every build.  Entries run first, before named-environment and device-level entries. |
 
 ```yaml
 environment:
-  - name: "DL_DIR"
-    value: "$ENV{HOME}/data/cache/downloads"
-  - name: "SSTATE_DIR"
-    value: "$ENV{HOME}/data/cache/sstate"
-  - name: "GITCONFIG_FILE"
-    value: "$ENV{HOME}/.gitconfig"
+  variables:
+    - name: "DL_DIR"
+      value: "$ENV{HOME}/data/cache/downloads"
+    - name: "SSTATE_DIR"
+      value: "$ENV{HOME}/data/cache/sstate"
+    - name: "GITCONFIG_FILE"
+      value: "$ENV{HOME}/.gitconfig"
+  copy:
+    - scripts/global-setup.sh: build/
+    - config/global.conf: build/conf/
 ```
 
----
-
-## `copy` (optional)
-
-Global file-copy entries executed inside the **build environment** before every
-build in the registry.  Files are placed in the build workspace — the project
-tree that is mounted inside the container — so they are available during the
-build regardless of device, release, or environment.
-
-Each entry is a single-key dict mapping a source path to a destination path.
-Both paths are resolved relative to the registry file's parent directory (the
-project root).  The destination should be within the build workspace (e.g.
-`build/`).  If the destination ends with `/` or is an existing directory, the
-source filename is preserved inside it.
-
-```yaml
-copy:
-  - scripts/global-setup.sh: build/
-  - config/global.conf: build/conf/
-```
-
-See [Copy merge order](#copy-merge-order) below for how global, environment, and device copies are combined.
+Both `variables` and `copy` are optional and can be omitted independently.
 
 ---
 
@@ -622,14 +609,13 @@ files.
 specification:
   version: "2.0"
 
-# Global environment variables (applied to all builds as a base)
+# Global environment: variables and file copies applied to every build
 environment:
-  - name: "GITCONFIG_FILE"
-    value: "$ENV{HOME}/.gitconfig"
-
-# Global file copies executed before every build in this registry
-copy:
-  - scripts/global-setup.sh: build/
+  variables:
+    - name: "GITCONFIG_FILE"
+      value: "$ENV{HOME}/.gitconfig"
+  copy:
+    - scripts/global-setup.sh: build/
 
 # Named environments: bundle a container + variables + optional copy under a name
 environments:

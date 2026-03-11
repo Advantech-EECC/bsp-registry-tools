@@ -69,11 +69,11 @@ class BspManager:
                 logging.info(f"Loaded {len(self.containers)} container definitions")
 
             # Initialize Environment manager if configuration exists
-            if self.model.environment:
-                self.env_manager = EnvironmentManager(self.model.environment)
+            if self.model.environment and self.model.environment.variables:
+                self.env_manager = EnvironmentManager(self.model.environment.variables)
                 logging.info(
                     f"Environment configuration initialized with "
-                    f"{len(self.model.environment)} variables"
+                    f"{len(self.model.environment.variables)} variables"
                 )
 
         except SystemExit:
@@ -370,7 +370,9 @@ class BspManager:
         # Build per-build EnvironmentManager: root vars merged with
         # named-env / feature vars from the resolved config.
         root_vars: List[EnvironmentVariable] = (
-            list(self.model.environment) if self.model.environment else []
+            list(self.model.environment.variables)
+            if self.model.environment and self.model.environment.variables
+            else []
         )
         # resolved.env contains named-env vars first, then feature vars.
         # Merge by appending; later keys win in EnvironmentManager.

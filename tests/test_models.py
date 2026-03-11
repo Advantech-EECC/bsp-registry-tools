@@ -7,6 +7,7 @@ from bsp import (
     DockerArg,
     Docker,
     Specification,
+    GlobalEnvironment,
     NamedEnvironment,
     DeviceBuild,
     BspBuild,
@@ -289,20 +290,22 @@ class TestV2DataClasses:
         reg = Registry()
         root = RegistryRoot(specification=spec, registry=reg)
         assert root.containers == {}
-        assert root.environment == []
+        assert root.environment is None
         assert root.environments == {}
-        assert root.copy == []
 
-    def test_registry_root_with_copy(self):
+    def test_registry_root_with_global_environment(self):
         spec = Specification(version="2.0")
         reg = Registry()
-        root = RegistryRoot(
-            specification=spec,
-            registry=reg,
+        env = GlobalEnvironment(
+            variables=[EnvironmentVariable(name="DL_DIR", value="/downloads")],
             copy=[{"global/setup.sh": "build/"}],
         )
-        assert len(root.copy) == 1
-        assert root.copy[0] == {"global/setup.sh": "build/"}
+        root = RegistryRoot(specification=spec, registry=reg, environment=env)
+        assert root.environment is not None
+        assert len(root.environment.variables) == 1
+        assert root.environment.variables[0].name == "DL_DIR"
+        assert len(root.environment.copy) == 1
+        assert root.environment.copy[0] == {"global/setup.sh": "build/"}
 
     def test_distro_defaults(self):
         distro = Distro(slug="poky", description="Poky reference distro", vendor="yocto")

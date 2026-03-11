@@ -75,8 +75,9 @@ specification:
   version: "2.0"
 
 environment:
-  - name: "GITCONFIG_FILE"
-    value: "$ENV{HOME}/.gitconfig"
+  variables:
+    - name: "GITCONFIG_FILE"
+      value: "$ENV{HOME}/.gitconfig"
 
 # Named environment: container + variables used for all builds by default
 environments:
@@ -333,17 +334,23 @@ See [docs/registry-v2.md](docs/registry-v2.md#include-optional) for full details
 
 ### `environment`
 
-Global environment variables applied to all builds. Supports `$ENV{VAR_NAME}` expansion to reference system environment variables.
+Global build environment applied to all builds.  Groups `variables` (supports `$ENV{VAR_NAME}` expansion) and `copy` (file-copy entries executed inside the build environment before every build) under a single key.
 
 ```yaml
 environment:
-  - name: "GITCONFIG_FILE"
-    value: "$ENV{HOME}/.gitconfig"
-  - name: "DL_DIR"
-    value: "$ENV{HOME}/yocto-cache/downloads"
-  - name: "SSTATE_DIR"
-    value: "$ENV{HOME}/yocto-cache/sstate"
+  variables:
+    - name: "GITCONFIG_FILE"
+      value: "$ENV{HOME}/.gitconfig"
+    - name: "DL_DIR"
+      value: "$ENV{HOME}/yocto-cache/downloads"
+    - name: "SSTATE_DIR"
+      value: "$ENV{HOME}/yocto-cache/sstate"
+  copy:
+    - scripts/global-setup.sh: build/
+    - config/global.conf: build/conf/
 ```
+
+Both `variables` and `copy` are optional.  Global copies are merged first, before named-environment and device copies.
 
 ### `environments`
 
@@ -365,18 +372,6 @@ environments:
     copy:
       - isar/scripts/isar-runqemu.sh: build/
 ```
-
-### `copy` (optional)
-
-Global file-copy entries executed inside the **build environment** before every build, regardless of device, release, or environment.  Files are placed in the build workspace (the project root mounted inside the container) so they are accessible during the build.
-
-```yaml
-copy:
-  - scripts/global-setup.sh: build/
-  - config/global.conf: build/conf/
-```
-
-Copies are merged in the order: **global → named environment → device**, so global copies always execute first.
 
 ### `containers`
 

@@ -88,6 +88,28 @@ class Specification:
 # =============================================================================
 
 @dataclass
+class GlobalEnvironment:
+    """
+    Global build environment applied to every build in the registry.
+
+    Groups the global environment variables and global file-copy entries
+    under a single ``environment:`` key in the registry YAML, keeping the
+    schema symmetric with ``NamedEnvironment``.
+
+    Attributes:
+        variables: Environment variables applied to every build (supports
+                   ``$ENV{}`` expansion).
+        copy: List of ``{source: destination}`` file-copy entries executed
+              inside the build environment before every build.  Both paths are
+              resolved relative to the registry file's parent directory (the
+              project root mounted inside the container).  These entries run
+              first, before named-environment and device-level entries.
+    """
+    variables: List[EnvironmentVariable] = field(default_factory=empty_list)
+    copy: List[Dict[str, str]] = field(default_factory=empty_list)
+
+
+@dataclass
 class NamedEnvironment:
     """
     A named build environment bundling a container reference and environment
@@ -105,7 +127,8 @@ class NamedEnvironment:
                    ``containers`` dict).  When ``None`` the device's own
                    ``build.container`` must be set.
         variables: Environment variables provided by this environment
-                   (merged on top of the root-level ``environment`` list).
+                   (merged on top of the root-level ``environment.variables``
+                   list).
         copy: List of ``{source: destination}`` file-copy entries executed
               before every build that uses this environment.  Both paths are
               resolved relative to the registry file's parent directory.
@@ -392,19 +415,17 @@ class RegistryRoot:
         specification: Specification version information (must be '2.0')
         registry: Main registry data containing devices, releases, features, and presets
         containers: Dictionary of Docker container definitions keyed by name
-        environment: Global environment variables for all builds (supports $ENV{} expansion)
+        environment: Global environment applied to every build.  Contains
+                     ``variables`` (``$ENV{}``-expandable) and ``copy``
+                     (file-copy entries executed inside the build environment
+                     before every build).
         environments: Optional dictionary of named environments.  Each entry
                       bundles a container reference and environment variables.
                       The special name ``"default"`` is applied to any release
                       that does not explicitly name an environment.
-        copy: Global list of ``{source: destination}`` file-copy entries
-              executed before every build.  Both paths are resolved relative
-              to the registry file's parent directory.  These entries are
-              applied first, before named-environment and device-level entries.
     """
     specification: Specification
     registry: Registry
     containers: Optional[Dict[str, Docker]] = field(default_factory=empty_dict)
-    environment: Optional[List[EnvironmentVariable]] = field(default_factory=empty_list)
+    environment: Optional[GlobalEnvironment] = None
     environments: Optional[Dict[str, NamedEnvironment]] = field(default_factory=empty_dict)
-    copy: List[Dict[str, str]] = field(default_factory=empty_list)
