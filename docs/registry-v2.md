@@ -254,7 +254,7 @@ environments:
 |-------------|----------------------|-----------------------------------------------------------------------------------------------|
 | `container` | string (opt.)        | Container name (references `containers` section). Used when the device has no container set. |
 | `variables` | list (opt.)          | Environment variables merged on top of the root `environment` list.                           |
-| `copy`      | list[dict] (opt.)    | File-copy entries executed inside the build environment before every build that uses this environment. Files are placed in the build workspace (project root mounted inside the container). Same format as `Device.copy` and root-level `copy`. |
+| `copy`      | list[dict] (opt.)    | File-copy entries executed inside the build environment before every build that uses this environment. The destination is resolved relative to the BSP's build directory (same as `Device.copy`). |
 
 ### Resolution rules
 
@@ -293,6 +293,17 @@ build workspace (the project root that is mounted inside the container) so they
 are accessible during the build.  Root-level copies always execute first
 (shared setup), then environment-specific copies, and finally device-specific
 copies.
+
+**Destination path resolution**: the *source* is always resolved relative to
+the registry file's parent directory.  The *destination* is resolved relative
+to the BSP's build directory.  For example, if the BSP preset's build path is
+`build/isar-qemuarm64-ubuntu-noble` and the copy entry specifies `scripts/` as
+the destination, the file lands at
+`build/isar-qemuarm64-ubuntu-noble/scripts/<filename>`.  This ensures the
+copied file is accessible inside the build workspace that is mounted into the
+container.  When no preset build path is set (direct `resolve()` call without
+a preset) the destination falls back to being relative to the registry
+directory.
 
 ---
 
@@ -416,7 +427,7 @@ registry:
 | `soc_family` | string (opt.)        | SoC family identifier (used in feature compatibility checks)                |
 | `includes`   | list[str]            | Device-specific KAS configuration files                                     |
 | `local_conf` | list[str]            | Lines appended to `local.conf` for this device                              |
-| `copy`       | list[dict[str, str]] | Files to copy into the build environment before the build starts. Each entry is a single-key dict `{"source": "destination"}`. Both paths are resolved relative to the registry file's parent directory (the project root mounted inside the container). The destination should be within the build workspace. If the destination ends with `/` or is an existing directory, the source filename is preserved. |
+| `copy`       | list[dict[str, str]] | Files to copy into the build environment before the build starts. Each entry is a single-key dict `{"source": "destination"}`. The source is resolved relative to the registry file's parent directory. The destination is resolved relative to the BSP's build directory, so `scripts/` means a `scripts/` subdirectory *inside* the BSP output folder (e.g. `build/my-bsp/scripts/`). If the destination ends with `/` or is an existing directory, the source filename is preserved. |
 
 > **Note on build output path and container:** In v2.0 the container and output path are **optional** preset-level overrides configured in the preset's `build:` block (see [`registry.bsp`](#registrybsp-optional-presets) below).  When `build:` is absent, or when individual fields are omitted, the container falls back to the release's named environment (or `"default"`), and the path is auto-composed as `build/<distro>-<device>-<release>`.  New registries should use the flat `includes`/`local_conf`/`copy` fields directly on the device instead of the legacy `device.build:` nested block.
 

@@ -290,14 +290,16 @@ class BspManager:
         Copy files into the build environment before the build starts.
 
         Each entry in ``resolved.copy`` is a single-key dict mapping a source
-        path to a destination path.  Both paths are resolved relative to the
-        registry file's parent directory (the project root that is mounted
-        inside the container).  If the destination ends with ``/`` or is an
-        existing directory the source filename is preserved inside it.
+        path to a destination path.  The source path is resolved relative to
+        the registry file's parent directory.  The destination path is resolved
+        relative to the BSP's build directory (``resolved.build_path``), so
+        that copied files land directly inside the build workspace for the
+        current BSP.  If the destination ends with ``/`` or is an existing
+        directory the source filename is preserved inside it.
 
-        The copied files are placed in the build workspace — the directory
-        tree that is mounted into the build container — so they are accessible
-        inside the container during the build.
+        The copied files are therefore accessible inside the build container
+        because the build directory is mounted into the container during the
+        build.
 
         Args:
             resolved: Resolved build configuration containing copy entries.
@@ -309,6 +311,20 @@ class BspManager:
             return
 
         base = self.config_path.parent
+        # Destination paths are relative to the BSP's build directory so that
+        # copied files land inside the build workspace for the current BSP.
+        # When build_path is empty (no preset, direct resolve() call) fall back
+        # to the registry directory to preserve backward-compatible behaviour.
+        raw_build_path = resolved.build_path or ""
+        if raw_build_path:
+            build_abs = Path(raw_build_path)
+            if not build_abs.is_absolute():
+                build_abs = (base / build_abs).resolve()
+            else:
+                build_abs = build_abs.resolve()
+        else:
+            build_abs = base.resolve()
+
         for copy_entry in resolved.copy:
             for src, dst in copy_entry.items():
                 src_path = Path(src)
@@ -323,7 +339,7 @@ class BspManager:
 
                 dst_path = Path(dst)
                 if not dst_path.is_absolute():
-                    dst_path = (base / dst_path).resolve()
+                    dst_path = (build_abs / dst_path).resolve()
 
                 # If destination looks like a directory (trailing slash or
                 # already is one), place the file inside it.

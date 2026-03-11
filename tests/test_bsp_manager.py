@@ -1017,3 +1017,38 @@ class TestShellCopyFiles:
                 manager.shell_by_components("isar-board", "isar-v0.11")
 
         assert (base / "build" / "isar" / "isar-runqemu.sh").exists()
+
+
+# =============================================================================
+# Tests for copy destination relative to BSP build path
+# =============================================================================
+
+class TestCopyDestinationRelativeToBuildPath:
+    def test_copy_dst_relative_to_preset_build_path(self, registry_with_named_env_copy_file):
+        """Files are copied into {build_path}/{dst}, not {registry_dir}/{dst}.
+
+        When a BSP preset has an explicit build path the destination in the copy
+        entry must be resolved relative to that BSP-specific build directory so
+        the file lands in the correct workspace (e.g. build/my-bsp/build/).
+        """
+        manager = BspManager(config_path=str(registry_with_named_env_copy_file))
+        manager.initialize()
+
+        base = registry_with_named_env_copy_file.parent
+        # Create source file expected by isar-env copy entry
+        (base / "isar" / "scripts").mkdir(parents=True, exist_ok=True)
+        (base / "isar" / "scripts" / "isar-runqemu.sh").write_text("#!/bin/sh\n")
+
+        # resolve_preset fills in the real build path (build/isar-board)
+        resolved, _ = manager.resolver.resolve_preset("isar-v0.11-build")
+        assert resolved.build_path == "build/isar-board"
+
+        manager._copy_files(resolved)
+
+        # With build_path="build/isar-board" and copy dst="build/isar/",
+        # the file must land at {registry_dir}/build/isar-board/build/isar/
+        expected = base / "build" / "isar-board" / "build" / "isar" / "isar-runqemu.sh"
+        assert expected.exists(), (
+            f"Expected file at {expected} but it was not created. "
+            "File should be placed relative to the BSP build path."
+        )
