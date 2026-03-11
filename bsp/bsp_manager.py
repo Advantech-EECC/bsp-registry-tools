@@ -332,6 +332,7 @@ class BspManager:
 
                 dst_path.parent.mkdir(parents=True, exist_ok=True)
                 try:
+                    self.logger.info(f"Copying file: {src_path} -> {dst_path}")
                     shutil.copy2(str(src_path), str(dst_path))
                 except OSError as e:
                     self.logger.error(
