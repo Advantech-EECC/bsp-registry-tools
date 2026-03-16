@@ -11,11 +11,15 @@ from pathlib import Path
 from typing import List, Optional
 
 from .environment import EnvironmentManager
+from .exceptions import COLORAMA_AVAILABLE
 from .kas_manager import KasManager
 from .models import BspPreset, Docker, EnvironmentVariable
 from .path_resolver import resolver
 from .resolver import ResolvedConfig, V2Resolver
 from .utils import get_registry_from_yaml_file, build_docker
+
+if COLORAMA_AVAILABLE:
+    from colorama import Fore, Style
 
 # =============================================================================
 # Main BSP Management Class with v2.0 Support
@@ -254,6 +258,166 @@ class BspManager:
                     f"    Args: "
                     f"{', '.join([f'{arg.name}={arg.value}' for arg in container_config.args])}"
                 )
+
+    def tree_bsp(self, use_color: bool = True) -> None:
+        """
+        Print a colored ASCII tree of the full BSP registry hierarchy.
+
+        The tree is organized into sections (Frameworks, Distros, Releases,
+        Devices, Features, BSP Presets) and uses Unicode box-drawing characters
+        for the connectors.  Colorama colors are applied when *use_color* is
+        ``True`` and colorama is installed; otherwise plain text is rendered.
+
+        Args:
+            use_color: Enable colored output (requires colorama).  Ignored when
+                       colorama is not installed.
+        """
+
+        colored = use_color and COLORAMA_AVAILABLE
+
+        # -----------------------------------------------------------------
+        # Color helpers (no-op when color is disabled)
+        # -----------------------------------------------------------------
+        def _c(text: str, *styles) -> str:
+            if not colored:
+                return text
+            return "".join(styles) + text + Style.RESET_ALL
+
+        # Convenience aliases
+        def _header(text: str) -> str:
+            return _c(text, Fore.CYAN, Style.BRIGHT)
+
+        def _name(text: str) -> str:
+            return _c(text, Fore.YELLOW)
+
+        def _dim(text: str) -> str:
+            return _c(text, Style.DIM) if colored else text
+
+        # -----------------------------------------------------------------
+        # Tree connector characters
+        # -----------------------------------------------------------------
+        BRANCH = "├── "
+        LAST   = "└── "
+        PIPE   = "│   "
+        BLANK  = "    "
+
+        # -----------------------------------------------------------------
+        # Registry root
+        # -----------------------------------------------------------------
+        registry = self.model.registry if self.model else None
+        print(_header("BSP Registry"))
+
+        sections = []
+
+        # Determine which top-level sections are present and non-empty
+        frameworks = (registry.frameworks or []) if registry else []
+        distros    = (registry.distro or [])      if registry else []
+        releases   = (registry.releases or [])    if registry else []
+        devices    = (registry.devices or [])     if registry else []
+        features   = (registry.features or [])    if registry else []
+        presets    = self.resolver.list_presets()  if self.resolver else []
+
+        sections = [
+            ("Frameworks", frameworks),
+            ("Distros",    distros),
+            ("Releases",   releases),
+            ("Devices",    devices),
+            ("Features",   features),
+            ("BSP Presets", presets),
+        ]
+        # Filter empty sections
+        sections = [(name, items) for name, items in sections if items]
+
+        for sec_idx, (sec_name, items) in enumerate(sections):
+            is_last_section = sec_idx == len(sections) - 1
+            sec_connector  = LAST if is_last_section else BRANCH
+            sec_prefix     = BLANK if is_last_section else PIPE
+
+            print(f"{sec_connector}{_header(sec_name)} ({len(items)})")
+
+            items = list(items)
+            for item_idx, item in enumerate(items):
+                is_last_item = item_idx == len(items) - 1
+                item_connector = LAST if is_last_item else BRANCH
+                item_prefix    = sec_prefix + (BLANK if is_last_item else PIPE)
+
+                # -------------------------------------------------------
+                # Per-section formatting
+                # -------------------------------------------------------
+                if sec_name == "Frameworks":
+                    detail = _dim(f" (vendor: {item.vendor})")
+                    print(f"{sec_prefix}{item_connector}{_name(item.slug)}: {item.description}{detail}")
+
+                elif sec_name == "Distros":
+                    parts = [f"vendor: {item.vendor}"] if item.vendor else []
+                    if item.framework:
+                        parts.append(f"framework: {item.framework}")
+                    detail = _dim(f" ({', '.join(parts)})") if parts else ""
+                    print(f"{sec_prefix}{item_connector}{_name(item.slug)}: {item.description}{detail}")
+
+                elif sec_name == "Releases":
+                    tags = []
+                    if item.yocto_version:
+                        tags.append(f"Yocto {item.yocto_version}")
+                    if item.isar_version:
+                        tags.append(f"Isar {item.isar_version}")
+                    tag_str = _dim(f" [{', '.join(tags)}]") if tags else ""
+                    print(f"{sec_prefix}{item_connector}{_name(item.slug)}: {item.description}{tag_str}")
+
+                    # Sub-items: distro + vendor overrides
+                    sub_items = []
+                    if item.distro:
+                        sub_items.append(_dim(f"distro: {item.distro}"))
+                    for vo in item.vendor_overrides:
+                        vr_names = [vr.slug for vr in vo.releases]
+                        vr_str   = (
+                            f" (sub-releases: {', '.join(vr_names)})" if vr_names else ""
+                        )
+                        sub_items.append(_dim(f"vendor override: {vo.vendor}{vr_str}"))
+
+                    for sub_idx, sub_line in enumerate(sub_items):
+                        sub_conn = LAST if sub_idx == len(sub_items) - 1 else BRANCH
+                        print(f"{item_prefix}{sub_conn}{sub_line}")
+
+                elif sec_name == "Devices":
+                    parts = [f"vendor: {item.vendor}", f"soc_vendor: {item.soc_vendor}"]
+                    if item.soc_family:
+                        parts.append(f"soc_family: {item.soc_family}")
+                    detail = _dim(f" ({', '.join(parts)})")
+                    print(f"{sec_prefix}{item_connector}{_name(item.slug)}: {item.description}{detail}")
+
+                elif sec_name == "Features":
+                    compat_parts = []
+                    if item.compatibility:
+                        if item.compatibility.vendor:
+                            compat_parts.append(f"vendor: {item.compatibility.vendor}")
+                        if item.compatibility.soc_vendor:
+                            compat_parts.append(f"soc_vendor: {item.compatibility.soc_vendor}")
+                        if item.compatibility.soc_family:
+                            compat_parts.append(f"soc_family: {item.compatibility.soc_family}")
+                    if item.compatible_with:
+                        compat_parts.append(f"compatible_with: {', '.join(item.compatible_with)}")
+                    compat_str = _dim(f" [requires {', '.join(compat_parts)}]") if compat_parts else ""
+                    print(f"{sec_prefix}{item_connector}{_name(item.slug)}: {item.description}{compat_str}")
+
+                elif sec_name == "BSP Presets":
+                    print(f"{sec_prefix}{item_connector}{_name(item.name)}: {item.description}")
+                    sub_lines = []
+                    sub_lines.append(
+                        _dim(f"device: {item.device}  release: {item.release}")
+                    )
+                    if item.vendor_release:
+                        sub_lines.append(_dim(f"vendor release: {item.vendor_release}"))
+                    if item.features:
+                        sub_lines.append(
+                            _dim(f"features: {', '.join(item.features)}")
+                        )
+                    for sub_idx, sub_line in enumerate(sub_lines):
+                        sub_conn = LAST if sub_idx == len(sub_lines) - 1 else BRANCH
+                        print(f"{item_prefix}{sub_conn}{sub_line}")
+
+        if not sections:
+            print(f"{LAST}{_dim('(empty registry)')}")
 
     # ------------------------------------------------------------------
     # Preset lookup

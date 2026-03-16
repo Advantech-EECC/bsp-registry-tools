@@ -95,3 +95,20 @@ registry:
             with patch.object(KasManager, "export_kas_config", return_value="config: data"):
                 exit_code = bsp.main()
         assert exit_code == 0
+
+    def test_main_tree_command(self, registry_file, capsys):
+        with patch("sys.argv", ["bsp", "--registry", str(registry_file), "tree"]):
+            exit_code = bsp.main()
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "BSP Registry" in captured.out
+        assert "test-device" in captured.out
+        assert "test-release" in captured.out
+
+    def test_main_tree_no_color_flag(self, registry_file, capsys):
+        with patch("sys.argv", ["bsp", "--registry", str(registry_file), "--no-color", "tree"]):
+            exit_code = bsp.main()
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "BSP Registry" in captured.out
+        assert "\x1b[" not in captured.out

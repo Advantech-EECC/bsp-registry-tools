@@ -1386,3 +1386,105 @@ class TestVendorOverrides:
         slugs = [vr.slug for vr in vo.releases]
         assert "imx-6.6.53" in slugs
         assert "imx-6.12.0" in slugs
+
+
+class TestBspManagerTree:
+    def test_tree_bsp_outputs_registry_header(self, registry_file, capsys):
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False)
+        captured = capsys.readouterr()
+        assert "BSP Registry" in captured.out
+
+    def test_tree_bsp_shows_devices_section(self, registry_file, capsys):
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False)
+        captured = capsys.readouterr()
+        assert "Devices" in captured.out
+        assert "test-device" in captured.out
+
+    def test_tree_bsp_shows_releases_section(self, registry_file, capsys):
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False)
+        captured = capsys.readouterr()
+        assert "Releases" in captured.out
+        assert "test-release" in captured.out
+
+    def test_tree_bsp_shows_presets_section(self, registry_file, capsys):
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False)
+        captured = capsys.readouterr()
+        assert "BSP Presets" in captured.out
+        assert "test-bsp" in captured.out
+
+    def test_tree_bsp_shows_frameworks_and_distros(self, registry_with_frameworks_file, capsys):
+        manager = BspManager(config_path=str(registry_with_frameworks_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False)
+        captured = capsys.readouterr()
+        assert "Frameworks" in captured.out
+        assert "yocto" in captured.out
+        assert "Distros" in captured.out
+        assert "poky" in captured.out
+
+    def test_tree_bsp_shows_features(self, registry_with_features_file, capsys):
+        manager = BspManager(config_path=str(registry_with_features_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False)
+        captured = capsys.readouterr()
+        assert "Features" in captured.out
+        assert "ota" in captured.out
+        assert "secure-boot" in captured.out
+
+    def test_tree_bsp_shows_vendor_overrides(self, registry_with_vendor_overrides_file, capsys):
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False)
+        captured = capsys.readouterr()
+        assert "vendor override" in captured.out
+        assert "advantech" in captured.out
+
+    def test_tree_bsp_empty_registry(self, tmp_dir, capsys):
+        empty_file = tmp_dir / "empty.yaml"
+        empty_file.write_text(EMPTY_REGISTRY_YAML)
+        manager = BspManager(config_path=str(empty_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False)
+        captured = capsys.readouterr()
+        assert "BSP Registry" in captured.out
+        assert "empty" in captured.out
+
+    def test_tree_bsp_tree_connectors_present(self, registry_file, capsys):
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False)
+        captured = capsys.readouterr()
+        assert "├──" in captured.out or "└──" in captured.out
+
+    def test_tree_bsp_preset_device_and_release_shown(self, registry_file, capsys):
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False)
+        captured = capsys.readouterr()
+        # Preset sub-lines must show device and release slugs
+        assert "test-device" in captured.out
+        assert "test-release" in captured.out
+
+    def test_tree_bsp_no_color_no_ansi_codes(self, registry_file, capsys):
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False)
+        captured = capsys.readouterr()
+        # No ANSI escape sequences should be present when color is disabled
+        assert "\x1b[" not in captured.out
+
+    def test_tree_bsp_preset_features_shown(self, registry_with_features_file, capsys):
+        manager = BspManager(config_path=str(registry_with_features_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False)
+        captured = capsys.readouterr()
+        # The preset in the features registry has features listed
+        assert "features:" in captured.out

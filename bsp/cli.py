@@ -108,6 +108,11 @@ def main() -> int:
         subparsers.add_parser("containers", help="List available containers")
 
         # ----------------------------------------------------------------
+        # Tree command
+        # ----------------------------------------------------------------
+        subparsers.add_parser("tree", help="Display a tree view of the BSP registry")
+
+        # ----------------------------------------------------------------
         # Export command
         # ----------------------------------------------------------------
         export_parser = subparsers.add_parser("export", help="Export BSP configuration")
@@ -274,6 +279,9 @@ def main() -> int:
 
         elif args.command == "containers":
             bsp_mgr.list_containers()
+
+        elif args.command == "tree":
+            bsp_mgr.tree_bsp(use_color=not args.no_color)
 
         elif args.command == "export":
             device = getattr(args, "device", None)

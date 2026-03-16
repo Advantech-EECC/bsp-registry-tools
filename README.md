@@ -185,16 +185,17 @@ bsp shell poky-qemuarm64-scarthgap
 usage: bsp [-h] [--verbose] [--registry REGISTRY] [--no-color]
            [--remote REMOTE] [--branch BRANCH] [--update | --no-update]
            [--local]
-           {build,list,containers,export,shell} ...
+           {build,list,containers,tree,export,shell} ...
 
 Advantech Board Support Package Registry
 
 positional arguments:
-  {build,list,containers,export,shell}
+  {build,list,containers,tree,export,shell}
                         Command to execute
     build               Build an image for BSP
     list                List available BSPs
     containers          List available containers
+    tree                Display a tree view of the BSP registry
     export              Export BSP configuration
     shell               Enter interactive shell for BSP
 
@@ -247,6 +248,46 @@ bsp --registry my-registry.yaml list
 
 ```bash
 bsp containers
+```
+
+#### `tree` — Display a tree view of the BSP registry
+
+```bash
+bsp tree
+bsp --no-color tree
+bsp --registry my-registry.yaml tree
+```
+
+Renders the full registry as a colored ASCII tree, grouped into sections:
+**Frameworks**, **Distros**, **Releases** (with vendor overrides), **Devices**,
+**Features**, and **BSP Presets** (with device, release, and feature details).
+Use `--no-color` to disable colors (e.g. for scripts or log files).
+
+**Example output:**
+
+```
+BSP Registry
+├── Frameworks (1)
+│   └── yocto: Yocto Project (vendor: yocto)
+├── Distros (1)
+│   └── poky: Poky (vendor: yocto, framework: yocto)
+├── Releases (1)
+│   └── scarthgap: Yocto 5.0 LTS [Yocto 5.0]
+│       ├── distro: poky
+│       └── vendor override: advantech (sub-releases: imx-6.6.53)
+├── Devices (2)
+│   ├── qemu-arm64: QEMU ARM64 (vendor: qemu, soc_vendor: arm)
+│   └── imx8qm: i.MX8 QM (vendor: advantech, soc_vendor: nxp, soc_family: imx8)
+├── Features (2)
+│   ├── ota: OTA Update
+│   └── secure-boot: Secure Boot [requires vendor: ['advantech']]
+└── BSP Presets (2)
+    ├── qemu-arm64-scarthgap: QEMU ARM64 Scarthgap
+    │   └── device: qemu-arm64  release: scarthgap
+    └── imx8qm-scarthgap: i.MX8 QM Scarthgap
+        ├── device: imx8qm  release: scarthgap
+        ├── vendor release: imx-6.6.53
+        └── features: ota, secure-boot
 ```
 
 #### `build` — Build a BSP image
