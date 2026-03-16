@@ -341,11 +341,17 @@ class V2Resolver:
         vendor_overrides: List[VendorOverride],
         device_vendor: str,
         vendor_release_slug: Optional[str] = None,
+        override_slug: Optional[str] = None,
     ) -> List[str]:
         """
         Return KAS include paths from *vendor_overrides* for *device_vendor*.
 
-        Resolution:
+        Resolution when *override_slug* is given:
+        1. Find the ``VendorOverride`` entry whose ``slug`` matches
+           *override_slug*.  If none found, return an empty list.
+        2. Always add ``VendorOverride.includes`` (common vendor includes).
+
+        Resolution when *override_slug* is **not** given (legacy vendor matching):
         1. Find the ``VendorOverride`` entry whose ``vendor`` matches
            *device_vendor*.  If none found, return an empty list.
         2. Always add ``VendorOverride.includes`` (common vendor includes).
@@ -357,20 +363,28 @@ class V2Resolver:
             vendor_overrides: List of ``VendorOverride`` entries from a release.
             device_vendor: Board vendor of the device being resolved.
             vendor_release_slug: Optional sub-release slug to look up.
+            override_slug: Optional ``VendorOverride.slug`` to select a
+                specific override entry by slug instead of vendor matching.
 
         Returns:
             Flat list of KAS file paths to append.
         """
         result: List[str] = []
-        for vo in vendor_overrides:
-            if vo.vendor == device_vendor:
-                result.extend(vo.includes)
-                if vendor_release_slug:
-                    for vr in vo.releases:
-                        if vr.slug == vendor_release_slug:
-                            result.extend(vr.includes)
-                            break
-                break
+        if override_slug:
+            for vo in vendor_overrides:
+                if vo.slug == override_slug:
+                    result.extend(vo.includes)
+                    break
+        else:
+            for vo in vendor_overrides:
+                if vo.vendor == device_vendor:
+                    result.extend(vo.includes)
+                    if vendor_release_slug:
+                        for vr in vo.releases:
+                            if vr.slug == vendor_release_slug:
+                                result.extend(vr.includes)
+                                break
+                    break
         return result
 
     def resolve(
@@ -379,14 +393,15 @@ class V2Resolver:
         release_slug: str,
         feature_slugs: Optional[List[str]] = None,
         vendor_release_slug: Optional[str] = None,
+        override_slug: Optional[str] = None,
     ) -> "ResolvedConfig":
         """
         Resolve device + release + features into a ResolvedConfig.
 
         Merging order for KAS files:
-          framework.includes -> distro.includes
+          framework.includes -> distro.includes (release.distro or override.distro)
           -> registry.vendors[device.vendor].includes
-          -> release.includes -> release.vendor_overrides[device.vendor].includes
+          -> release.includes -> release.vendor_overrides[device.vendor or override.slug].includes
           -> release.vendor_overrides[device.vendor].releases[vendor_release].includes
           -> device.includes -> feature.includes
         Merging order for local_conf:  device.local_conf -> feature.local_conf (in order)
@@ -399,6 +414,11 @@ class V2Resolver:
                 the resolver looks for a matching ``VendorRelease`` inside the
                 release's ``VendorOverride`` for the device's board vendor and
                 appends its includes after the vendor's common includes.
+            override_slug: Optional ``VendorOverride.slug`` to select a specific
+                vendor override entry by its slug.  When set the resolver uses
+                the matching override entry's includes (and its ``distro`` field,
+                if present, to override the release's distro).  Cannot be used
+                together with ``vendor_release_slug``.
 
         Returns:
             ResolvedConfig ready to drive a build
@@ -411,6 +431,24 @@ class V2Resolver:
         device = self.get_device(device_slug)
         release = self.get_release(release_slug)
         features = [self.get_feature(s) for s in feature_slugs]
+
+        # Resolve the active vendor override entry (used for distro override and includes)
+        active_vendor_override: Optional[VendorOverride] = None
+        if override_slug:
+            active_vendor_override = next(
+                (vo for vo in release.vendor_overrides if vo.slug == override_slug),
+                None,
+            )
+            if active_vendor_override is None:
+                available = ", ".join(
+                    vo.slug for vo in release.vendor_overrides if vo.slug
+                ) or "(none)"
+                self.logger.error(
+                    f"override '{override_slug}' not found in release "
+                    f"'{release_slug}' vendor_overrides. "
+                    f"Available slugs: {available}"
+                )
+                sys.exit(1)
 
         # Validate vendor_release_slug when provided
         if vendor_release_slug:
@@ -474,15 +512,23 @@ class V2Resolver:
                 )
                 sys.exit(1)
 
+        # Determine the effective distro slug: vendor override's distro takes
+        # precedence over the release-level distro.
+        effective_distro: Optional[str] = (
+            active_vendor_override.distro
+            if active_vendor_override and active_vendor_override.distro
+            else release.distro
+        )
+
         # Build ordered KAS file list
-        # Order: framework.includes -> distro.includes
+        # Order: framework.includes -> distro.includes (effective distro)
         #        -> vendor.includes (registry.vendors[device.vendor])
-        #        -> release.includes -> release.vendor_overrides[vendor] (common + sub-release)
+        #        -> release.includes -> release.vendor_overrides[vendor or override slug]
         #        -> device.includes -> feature.includes
         # Prefer device.includes (new style); fall back to device.build.includes (legacy).
         kas_files: List[str] = []
-        if release.distro:
-            distro_obj = self.get_distro(release.distro)
+        if effective_distro:
+            distro_obj = self.get_distro(effective_distro)
             if distro_obj.framework:
                 framework_obj = self.get_framework(distro_obj.framework)
                 kas_files.extend(framework_obj.includes)
@@ -496,7 +542,7 @@ class V2Resolver:
             kas_files.extend(vendor_obj.includes)
         kas_files.extend(release.includes)
         kas_files.extend(self._apply_vendor_overrides(
-            release.vendor_overrides, device.vendor, vendor_release_slug
+            release.vendor_overrides, device.vendor, vendor_release_slug, override_slug
         ))
         device_includes = device.includes if device.includes else (
             device.build.includes if device.build else []
@@ -644,6 +690,7 @@ class V2Resolver:
                     release=release_slug,
                     releases=[],
                     vendor_release=preset.vendor_release,
+                    override=preset.override,
                     features=list(preset.features),
                     build=expanded_build,
                 )
@@ -710,6 +757,7 @@ class V2Resolver:
         resolved = self.resolve(
             preset.device, preset.release, preset.features,
             vendor_release_slug=preset.vendor_release,
+            override_slug=preset.override,
         )
 
         # Apply preset build overrides

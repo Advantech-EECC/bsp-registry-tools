@@ -1388,6 +1388,116 @@ class TestVendorOverrides:
         assert "imx-6.12.0" in slugs
 
 
+class TestVendorOverrideSlug:
+    """Tests for vendor_overrides with slug field and distro override."""
+
+    def test_override_slug_selects_correct_vendor_override(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """Resolving with override_slug picks the VendorOverride entry by slug."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8-europe", "scarthgap", override_slug="imx-6.6.23-2.0.0"
+        )
+        assert "kas/yocto/vendors/advantech-europe/nxp/imx-6.6.23-2.0.0-scarthgap.yaml" in resolved.kas_files
+
+    def test_other_override_slug_not_applied(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """Only the selected override slug's includes are applied, not others."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8-europe", "scarthgap", override_slug="imx-6.6.23-2.0.0"
+        )
+        assert "kas/yocto/vendors/advantech-europe/nxp/imx-6.6.36-2.1.0-scarthgap.yaml" not in resolved.kas_files
+
+    def test_override_slug_distro_overrides_release_distro(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """When VendorOverride.distro is set, it replaces the release distro includes."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8-europe", "scarthgap", override_slug="imx-6.6.23-2.0.0"
+        )
+        # poky-imx distro includes should be present
+        assert "kas/poky/distro/poky-imx.yaml" in resolved.kas_files
+
+    def test_override_slug_without_distro_uses_release_distro(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """When VendorOverride.distro is not set, the release's distro includes are used."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8-europe", "scarthgap", override_slug="imx-6.6.36-2.1.0"
+        )
+        # Standard poky distro (from release.distro)
+        assert "kas/poky/distro/poky.yaml" in resolved.kas_files
+        # poky-imx is NOT present (no distro override on this entry)
+        assert "kas/poky/distro/poky-imx.yaml" not in resolved.kas_files
+
+    def test_no_override_slug_uses_vendor_matching(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """Without override_slug, vendor-matching logic is used (existing behaviour)."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("adv-imx8", "scarthgap")
+        assert "kas/yocto/vendors/advantech/nxp/scarthgap.yaml" in resolved.kas_files
+        assert "kas/poky/distro/poky.yaml" in resolved.kas_files
+
+    def test_invalid_override_slug_exits(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """Specifying an unknown override slug causes a SystemExit."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        with pytest.raises(SystemExit):
+            manager.resolver.resolve(
+                "adv-imx8-europe", "scarthgap", override_slug="does-not-exist"
+            )
+
+    def test_preset_with_override_field_resolved(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """A BSP preset with override field resolves using the slug-based vendor override."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        resolved, preset = manager.resolver.resolve_preset("adv-imx8-europe-scarthgap-imx-6.6.23")
+        assert preset.override == "imx-6.6.23-2.0.0"
+        assert "kas/yocto/vendors/advantech-europe/nxp/imx-6.6.23-2.0.0-scarthgap.yaml" in resolved.kas_files
+        # distro override applies
+        assert "kas/poky/distro/poky-imx.yaml" in resolved.kas_files
+
+    def test_preset_with_override_field_selects_correct_entry(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """Two presets with different override slugs get different includes."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        r1, _ = manager.resolver.resolve_preset("adv-imx8-europe-scarthgap-imx-6.6.23")
+        r2, _ = manager.resolver.resolve_preset("adv-imx8-europe-scarthgap-imx-6.6.36")
+        assert "kas/yocto/vendors/advantech-europe/nxp/imx-6.6.23-2.0.0-scarthgap.yaml" in r1.kas_files
+        assert "kas/yocto/vendors/advantech-europe/nxp/imx-6.6.36-2.1.0-scarthgap.yaml" not in r1.kas_files
+        assert "kas/yocto/vendors/advantech-europe/nxp/imx-6.6.36-2.1.0-scarthgap.yaml" in r2.kas_files
+        assert "kas/yocto/vendors/advantech-europe/nxp/imx-6.6.23-2.0.0-scarthgap.yaml" not in r2.kas_files
+
+    def test_vendor_override_slug_loaded_from_yaml(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """VendorOverride.slug and .distro are correctly parsed from YAML."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        release = manager.resolver.get_release("scarthgap")
+        slugged = [vo for vo in release.vendor_overrides if vo.slug == "imx-6.6.23-2.0.0"]
+        assert len(slugged) == 1
+        assert slugged[0].vendor == "advantech-europe"
+        assert slugged[0].distro == "poky-imx"
+
+
 class TestRegistryVendors:
     """Tests for registry.vendors top-level vendor definitions and their includes."""
 

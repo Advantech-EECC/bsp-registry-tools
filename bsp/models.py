@@ -258,15 +258,28 @@ class VendorOverride:
       i.MX kernel versions).  When the resolver is given a ``vendor_release``
       slug it looks up the matching ``VendorRelease`` entry and appends its
       includes after the common ``includes``.
+    * ``slug`` — Optional unique identifier that allows a BSP preset to
+      reference this exact override entry via the preset's ``override`` field,
+      independently of the ``vendor`` matching logic.  Multiple overrides for
+      the same vendor can coexist when they each carry a distinct slug.
+    * ``distro`` — Optional distro slug that overrides the release's own
+      ``distro`` field when this vendor override is active.  Allows a specific
+      vendor/BSP combination to be built against a different distro than the
+      parent release normally uses.
 
     Attributes:
         vendor: Board vendor name this override applies to
         includes: KAS files common to all sub-releases for this vendor
         releases: Optional list of vendor-specific sub-releases
+        slug: Optional unique identifier for this override entry
+        distro: Optional distro slug that overrides the release distro for
+                this vendor override
     """
     vendor: str
     includes: List[str] = field(default_factory=empty_list)
     releases: List[VendorRelease] = field(default_factory=empty_list)
+    slug: Optional[str] = None
+    distro: Optional[str] = None
 
 
 @dataclass
@@ -454,6 +467,12 @@ class BspPreset:
                         ``VendorOverride`` entry for the device's board vendor).
                         When set the resolver appends the sub-release's includes
                         after the vendor's common includes.
+        override: Optional ``VendorOverride.slug`` to select a specific
+                  vendor override entry by its slug rather than by vendor
+                  matching.  When set the resolver looks up the matching
+                  ``VendorOverride`` entry in the release's ``vendor_overrides``
+                  list and applies its includes (and its ``distro`` override, if
+                  present) regardless of the device's vendor field.
         features: List of feature slugs to enable (references registry.features)
         build: Optional build configuration (container + output path).  When
                absent the container is taken from the release's named
@@ -468,6 +487,7 @@ class BspPreset:
     release: Optional[str] = None
     releases: List[str] = field(default_factory=empty_list)
     vendor_release: Optional[str] = None
+    override: Optional[str] = None
     features: List[str] = field(default_factory=empty_list)
     build: Optional[BspBuild] = None
 

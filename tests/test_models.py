@@ -222,6 +222,20 @@ class TestV2DataClasses:
         assert vo.includes == ["adv.yml"]
         assert len(vo.releases) == 1
         assert vo.releases[0].slug == "imx-6.6.53"
+        assert vo.slug is None
+        assert vo.distro is None
+
+    def test_vendor_override_with_slug_and_distro(self):
+        vo = VendorOverride(
+            vendor="advantech-europe",
+            slug="imx-6.6.23-2.0.0",
+            distro="poky-imx",
+            includes=["adv-europe.yml"],
+        )
+        assert vo.slug == "imx-6.6.23-2.0.0"
+        assert vo.distro == "poky-imx"
+        assert vo.vendor == "advantech-europe"
+        assert vo.includes == ["adv-europe.yml"]
 
     def test_release_defaults(self):
         release = Release(slug="scarthgap", description="Scarthgap")
@@ -264,6 +278,8 @@ class TestV2DataClasses:
         assert preset.name == "my-preset"
         assert preset.features == []
         assert preset.build is None
+        assert preset.vendor_release is None
+        assert preset.override is None
 
     def test_bsp_preset_with_build(self):
         bsp_build = BspBuild(container="debian-bookworm", path="build/my-preset")
@@ -287,6 +303,17 @@ class TestV2DataClasses:
             features=["ota", "secure-boot"],
         )
         assert preset.features == ["ota", "secure-boot"]
+
+    def test_bsp_preset_with_override(self):
+        preset = BspPreset(
+            name="my-preset",
+            description="My Preset",
+            device="adv-imx8-europe",
+            release="scarthgap",
+            override="imx-6.6.23-2.0.0",
+        )
+        assert preset.override == "imx-6.6.23-2.0.0"
+        assert preset.vendor_release is None
 
     def test_registry_defaults(self):
         reg = Registry()

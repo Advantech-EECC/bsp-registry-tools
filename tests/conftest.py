@@ -967,3 +967,102 @@ def registry_with_vendors_file(tmp_dir):
     registry_path = tmp_dir / "bsp-registry.yaml"
     registry_path.write_text(REGISTRY_WITH_VENDORS_YAML)
     return registry_path
+
+
+REGISTRY_WITH_VENDOR_OVERRIDE_SLUG_YAML = """
+specification:
+  version: "2.0"
+containers:
+  debian-bookworm:
+    image: "test/debian:bookworm"
+    file: null
+    args: []
+registry:
+  distro:
+    - slug: poky
+      description: "Poky (Yocto Project reference distro)"
+      vendor: yocto
+      includes:
+        - kas/poky/distro/poky.yaml
+    - slug: poky-imx
+      description: "Poky with i.MX BSP layers"
+      vendor: nxp
+      includes:
+        - kas/poky/distro/poky.yaml
+        - kas/poky/distro/poky-imx.yaml
+  devices:
+    - slug: adv-imx8
+      description: "Advantech i.MX8 Board"
+      vendor: advantech
+      soc_vendor: nxp
+      includes:
+        - kas/adv-imx8.yaml
+    - slug: adv-imx8-europe
+      description: "Advantech Europe i.MX8 Board"
+      vendor: advantech-europe
+      soc_vendor: nxp
+      includes:
+        - kas/adv-imx8-europe.yaml
+    - slug: qemu-arm64
+      description: "QEMU ARM64"
+      vendor: qemu
+      soc_vendor: arm
+      includes:
+        - kas/qemu/qemuarm64.yaml
+  releases:
+    - slug: scarthgap
+      distro: poky
+      description: "Yocto 5.0 LTS (Scarthgap)"
+      yocto_version: "5.0"
+      includes:
+        - kas/poky/scarthgap.yaml
+      vendor_overrides:
+        - slug: imx-6.6.23-2.0.0
+          vendor: advantech-europe
+          distro: poky-imx
+          includes:
+            - kas/yocto/vendors/advantech-europe/nxp/imx-6.6.23-2.0.0-scarthgap.yaml
+        - slug: imx-6.6.36-2.1.0
+          vendor: advantech-europe
+          includes:
+            - kas/yocto/vendors/advantech-europe/nxp/imx-6.6.36-2.1.0-scarthgap.yaml
+        - vendor: advantech
+          includes:
+            - kas/yocto/vendors/advantech/nxp/scarthgap.yaml
+  features: []
+  bsp:
+    - name: adv-imx8-europe-scarthgap-imx-6.6.23
+      description: "Advantech Europe i.MX8 Scarthgap (imx-6.6.23)"
+      device: adv-imx8-europe
+      release: scarthgap
+      override: imx-6.6.23-2.0.0
+      features: []
+      build:
+        container: "debian-bookworm"
+        path: build/adv-imx8-europe-scarthgap-imx-6.6.23
+    - name: adv-imx8-europe-scarthgap-imx-6.6.36
+      description: "Advantech Europe i.MX8 Scarthgap (imx-6.6.36)"
+      device: adv-imx8-europe
+      release: scarthgap
+      override: imx-6.6.36-2.1.0
+      features: []
+      build:
+        container: "debian-bookworm"
+        path: build/adv-imx8-europe-scarthgap-imx-6.6.36
+    - name: adv-imx8-scarthgap
+      description: "Advantech i.MX8 Scarthgap (no override)"
+      device: adv-imx8
+      release: scarthgap
+      features: []
+      build:
+        container: "debian-bookworm"
+        path: build/adv-imx8-scarthgap
+"""
+
+
+@pytest.fixture
+def registry_with_vendor_override_slug_file(tmp_dir):
+    """Create a registry YAML with vendor_overrides using slug and distro override."""
+    registry_path = tmp_dir / "bsp-registry.yaml"
+    registry_path.write_text(REGISTRY_WITH_VENDOR_OVERRIDE_SLUG_YAML)
+    return registry_path
