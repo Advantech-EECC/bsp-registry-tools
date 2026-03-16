@@ -476,6 +476,40 @@ class V2Resolver:
                 )
                 sys.exit(1)
 
+        # Auto-select the first matching vendor override when vendor_overrides exist
+        # but neither override_slug nor vendor_release_slug was explicitly specified.
+        # This ensures the caller always gets vendor includes while being warned to
+        # make an explicit selection.
+        if release.vendor_overrides and not override_slug and not vendor_release_slug:
+            first_matching = next(
+                (vo for vo in release.vendor_overrides if vo.vendor == device.vendor),
+                None,
+            )
+            if first_matching is not None:
+                slug_hint = first_matching.slug or first_matching.vendor
+                available_slugs = ", ".join(
+                    vo.slug for vo in release.vendor_overrides if vo.slug
+                )
+                hint = (
+                    f" Available override slugs: {available_slugs}."
+                    if available_slugs
+                    else ""
+                )
+                self.logger.warning(
+                    f"Release '{release_slug}' has vendor_overrides defined but no "
+                    f"`override` or `vendor_release` was specified. "
+                    f"Automatically selecting first matching entry "
+                    f"(vendor='{first_matching.vendor}', slug='{slug_hint}').{hint} "
+                    f"Add `override:` or `vendor_release:` to the BSP preset to "
+                    f"suppress this warning."
+                )
+                # Set the active override so its distro field is picked up below.
+                active_vendor_override = first_matching
+                # When the override has a slug, drive _apply_vendor_overrides by slug
+                # so it selects this specific entry rather than the first vendor match.
+                if first_matching.slug:
+                    override_slug = first_matching.slug
+
         # Check compatibility for every requested feature
         for feature in features:
             if not self.check_feature_compatibility(feature, device):

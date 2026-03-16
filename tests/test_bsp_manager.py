@@ -1387,6 +1387,39 @@ class TestVendorOverrides:
         assert "imx-6.6.53" in slugs
         assert "imx-6.12.0" in slugs
 
+    def test_no_override_no_vendor_release_emits_warning(
+        self, registry_with_vendor_overrides_file, caplog
+    ):
+        """When vendor_overrides exist but neither override nor vendor_release is given,
+        a warning is emitted and common vendor includes are still applied."""
+        import logging
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        with caplog.at_level(logging.WARNING):
+            resolved = manager.resolver.resolve("adv-imx8", "scarthgap")
+        # Common vendor includes still applied
+        assert "kas/yocto/vendors/advantech/scarthgap.yaml" in resolved.kas_files
+        # Warning was emitted
+        assert any(
+            "override" in msg.lower() or "vendor_release" in msg.lower()
+            for msg in caplog.messages
+        )
+
+    def test_explicit_vendor_release_suppresses_auto_selection_warning(
+        self, registry_with_vendor_overrides_file, caplog
+    ):
+        """Providing an explicit vendor_release suppresses the auto-selection warning."""
+        import logging
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        with caplog.at_level(logging.WARNING):
+            manager.resolver.resolve(
+                "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+            )
+        assert not any(
+            "automatically selecting" in msg.lower() for msg in caplog.messages
+        )
+
 
 class TestVendorOverrideSlug:
     """Tests for vendor_overrides with slug field and distro override."""
@@ -1496,6 +1529,37 @@ class TestVendorOverrideSlug:
         assert len(slugged) == 1
         assert slugged[0].vendor == "advantech-europe"
         assert slugged[0].distro == "poky-imx"
+
+    def test_no_override_no_vendor_release_emits_warning_and_uses_first(
+        self, registry_with_vendor_override_slug_file, caplog
+    ):
+        """When vendor_overrides exist but neither override nor vendor_release is specified,
+        the first matching entry is auto-selected and a WARNING is logged."""
+        import logging
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        with caplog.at_level(logging.WARNING):
+            resolved = manager.resolver.resolve("adv-imx8-europe", "scarthgap")
+        # First matching entry for vendor=advantech-europe is imx-6.6.23-2.0.0
+        assert "kas/yocto/vendors/advantech-europe/nxp/imx-6.6.23-2.0.0-scarthgap.yaml" in resolved.kas_files
+        assert any("override" in msg.lower() or "vendor_release" in msg.lower()
+                   for msg in caplog.messages)
+
+    def test_explicit_override_suppresses_auto_selection_warning(
+        self, registry_with_vendor_override_slug_file, caplog
+    ):
+        """Providing an explicit override slug suppresses the auto-selection warning."""
+        import logging
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        with caplog.at_level(logging.WARNING):
+            manager.resolver.resolve(
+                "adv-imx8-europe", "scarthgap", override_slug="imx-6.6.23-2.0.0"
+            )
+        # No auto-selection warning should appear when override is explicit
+        assert not any(
+            "automatically selecting" in msg.lower() for msg in caplog.messages
+        )
 
 
 class TestRegistryVendors:

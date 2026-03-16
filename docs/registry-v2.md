@@ -618,6 +618,40 @@ releases:
           - kas/advantech/nxp/scarthgap.yaml
 ```
 
+#### Auto-selection when no `override` or `vendor_release` is specified
+
+If a release has `vendor_overrides` and a build is triggered **without** specifying
+an explicit `override` or `vendor_release` (e.g. a preset that omits both fields),
+the resolver:
+
+1. Finds the **first** `vendor_overrides` entry whose `vendor` matches the device's vendor.
+2. Applies that entry's includes (and its `distro` override, if present).
+3. Emits a **WARNING** advising you to add an explicit `override:` or `vendor_release:`
+   to the BSP preset.
+
+This auto-selection ensures you always get usable vendor includes as a default, while
+being notified that an explicit choice is recommended.
+
+```
+WARNING  Release 'scarthgap' has vendor_overrides defined but no `override` or
+         `vendor_release` was specified. Automatically selecting first matching
+         entry (vendor='advantech-europe', slug='imx-6.6.23-2.0.0').
+         Available override slugs: imx-6.6.23-2.0.0, imx-6.6.36-2.1.0.
+         Add `override:` or `vendor_release:` to the BSP preset to suppress
+         this warning.
+```
+
+To suppress the warning, add either field to the preset:
+
+```yaml
+bsp:
+  - name: my-board-scarthgap
+    device: my-board
+    release: scarthgap
+    override: imx-6.6.23-2.0.0   # explicit selection → no warning
+    features: []
+```
+
 ---
 
 ## `registry.features`
