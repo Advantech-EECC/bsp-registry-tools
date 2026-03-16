@@ -22,6 +22,7 @@ from .models import (
     NamedEnvironment,
     Release,
     RegistryRoot,
+    Vendor,
     VendorOverride,
     empty_list,
 )
@@ -213,6 +214,25 @@ class V2Resolver:
         """Return all framework definitions in the registry."""
         return list(self.model.registry.frameworks)
 
+    def get_vendor(self, slug: str) -> Vendor:
+        """
+        Retrieve a vendor definition by slug.
+
+        Raises:
+            SystemExit: If vendor slug is not found
+        """
+        for vendor in self.model.registry.vendors:
+            if vendor.slug == slug:
+                return vendor
+        self.logger.error(f"Vendor not found: '{slug}'")
+        available = ", ".join(v.slug for v in self.model.registry.vendors)
+        self.logger.info(f"Available vendors: {available or '(none)'}")
+        sys.exit(1)
+
+    def list_vendors(self) -> List[Vendor]:
+        """Return all vendor definitions in the registry."""
+        return list(self.model.registry.vendors)
+
     # ------------------------------------------------------------------
     # Compatibility check
     # ------------------------------------------------------------------
@@ -365,6 +385,7 @@ class V2Resolver:
 
         Merging order for KAS files:
           framework.includes -> distro.includes
+          -> registry.vendors[device.vendor].includes
           -> release.includes -> release.vendor_overrides[device.vendor].includes
           -> release.vendor_overrides[device.vendor].releases[vendor_release].includes
           -> device.includes -> feature.includes
@@ -455,6 +476,7 @@ class V2Resolver:
 
         # Build ordered KAS file list
         # Order: framework.includes -> distro.includes
+        #        -> vendor.includes (registry.vendors[device.vendor])
         #        -> release.includes -> release.vendor_overrides[vendor] (common + sub-release)
         #        -> device.includes -> feature.includes
         # Prefer device.includes (new style); fall back to device.build.includes (legacy).
@@ -465,6 +487,13 @@ class V2Resolver:
                 framework_obj = self.get_framework(distro_obj.framework)
                 kas_files.extend(framework_obj.includes)
             kas_files.extend(distro_obj.includes)
+        # Include vendor-level includes when a matching vendor entry exists
+        vendor_obj = next(
+            (v for v in self.model.registry.vendors if v.slug == device.vendor),
+            None,
+        )
+        if vendor_obj:
+            kas_files.extend(vendor_obj.includes)
         kas_files.extend(release.includes)
         kas_files.extend(self._apply_vendor_overrides(
             release.vendor_overrides, device.vendor, vendor_release_slug

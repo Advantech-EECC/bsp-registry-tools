@@ -897,3 +897,73 @@ def registry_with_vendor_overrides_file(tmp_dir):
     registry_path = tmp_dir / "bsp-registry.yaml"
     registry_path.write_text(REGISTRY_WITH_VENDOR_OVERRIDES_YAML)
     return registry_path
+
+
+REGISTRY_WITH_VENDORS_YAML = """
+specification:
+  version: "2.0"
+containers:
+  debian-bookworm:
+    image: "test/debian:bookworm"
+    file: null
+    args: []
+registry:
+  vendors:
+    - slug: advantech
+      name: "Advantech"
+      description: "Advantech Corporation, a global leader in industrial computing and IoT solutions."
+      website: "https://www.advantech.com/"
+      includes:
+        - vendors/advantech/nxp/advantech.yml
+    - slug: myvendor
+      name: "My Vendor"
+      description: "Another vendor"
+      website: "https://example.com/"
+      includes:
+        - vendors/myvendor/base.yml
+  devices:
+    - slug: adv-imx8
+      description: "Advantech i.MX8 Board"
+      vendor: advantech
+      soc_vendor: nxp
+      includes:
+        - kas/adv-imx8.yaml
+    - slug: qemu-arm64
+      description: "QEMU ARM64"
+      vendor: qemu
+      soc_vendor: arm
+      includes:
+        - kas/qemu/qemuarm64.yaml
+  releases:
+    - slug: scarthgap
+      description: "Yocto 5.0 LTS (Scarthgap)"
+      yocto_version: "5.0"
+      includes:
+        - kas/scarthgap.yaml
+  features: []
+  bsp:
+    - name: adv-imx8-scarthgap
+      description: "Advantech i.MX8 Scarthgap"
+      device: adv-imx8
+      release: scarthgap
+      features: []
+      build:
+        container: "debian-bookworm"
+        path: build/adv-imx8-scarthgap
+    - name: qemu-arm64-scarthgap
+      description: "QEMU ARM64 Scarthgap BSP"
+      device: qemu-arm64
+      release: scarthgap
+      features: []
+      build:
+        container: "debian-bookworm"
+        path: build/qemu-arm64-scarthgap
+"""
+
+
+@pytest.fixture
+def registry_with_vendors_file(tmp_dir):
+    """Create a registry YAML file with top-level vendor definitions."""
+    registry_path = tmp_dir / "bsp-registry.yaml"
+    registry_path.write_text(REGISTRY_WITH_VENDORS_YAML)
+    return registry_path

@@ -1388,6 +1388,88 @@ class TestVendorOverrides:
         assert "imx-6.12.0" in slugs
 
 
+class TestRegistryVendors:
+    """Tests for registry.vendors top-level vendor definitions and their includes."""
+
+    def test_vendor_includes_added_for_matching_device(self, registry_with_vendors_file):
+        """registry.vendors[device.vendor].includes must appear in the resolved kas_files."""
+        from bsp.bsp_manager import BspManager
+        manager = BspManager(config_path=str(registry_with_vendors_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("adv-imx8", "scarthgap")
+        assert "vendors/advantech/nxp/advantech.yml" in resolved.kas_files
+
+    def test_vendor_includes_not_added_for_unregistered_vendor(
+        self, registry_with_vendors_file
+    ):
+        """Devices whose vendor has no entry in registry.vendors get no extra includes."""
+        from bsp.bsp_manager import BspManager
+        manager = BspManager(config_path=str(registry_with_vendors_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("qemu-arm64", "scarthgap")
+        assert "vendors/advantech/nxp/advantech.yml" not in resolved.kas_files
+        assert "vendors/myvendor/base.yml" not in resolved.kas_files
+
+    def test_vendor_includes_order(self, registry_with_vendors_file):
+        """vendor.includes must appear after distro includes but before release.includes and device.includes."""
+        from bsp.bsp_manager import BspManager
+        manager = BspManager(config_path=str(registry_with_vendors_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("adv-imx8", "scarthgap")
+        kas = resolved.kas_files
+        idx_vendor = kas.index("vendors/advantech/nxp/advantech.yml")
+        idx_release = kas.index("kas/scarthgap.yaml")
+        idx_device = kas.index("kas/adv-imx8.yaml")
+        assert idx_vendor < idx_release < idx_device
+
+    def test_get_vendor(self, registry_with_vendors_file):
+        """get_vendor() returns the correct Vendor object by slug."""
+        from bsp.bsp_manager import BspManager
+        manager = BspManager(config_path=str(registry_with_vendors_file))
+        manager.initialize()
+        vendor = manager.resolver.get_vendor("advantech")
+        assert vendor.slug == "advantech"
+        assert vendor.name == "Advantech"
+        assert "vendors/advantech/nxp/advantech.yml" in vendor.includes
+
+    def test_get_vendor_not_found_exits(self, registry_with_vendors_file):
+        """get_vendor() exits when the slug is not found."""
+        from bsp.bsp_manager import BspManager
+        manager = BspManager(config_path=str(registry_with_vendors_file))
+        manager.initialize()
+        with pytest.raises(SystemExit):
+            manager.resolver.get_vendor("nonexistent-vendor")
+
+    def test_list_vendors(self, registry_with_vendors_file):
+        """list_vendors() returns all vendor entries."""
+        from bsp.bsp_manager import BspManager
+        manager = BspManager(config_path=str(registry_with_vendors_file))
+        manager.initialize()
+        vendors = manager.resolver.list_vendors()
+        slugs = [v.slug for v in vendors]
+        assert "advantech" in slugs
+        assert "myvendor" in slugs
+
+    def test_vendors_loaded_from_yaml(self, registry_with_vendors_file):
+        """registry.vendors is correctly parsed from YAML (slug, name, description, website, includes)."""
+        from bsp.bsp_manager import BspManager
+        manager = BspManager(config_path=str(registry_with_vendors_file))
+        manager.initialize()
+        assert len(manager.model.registry.vendors) == 2
+        adv = next(v for v in manager.model.registry.vendors if v.slug == "advantech")
+        assert adv.name == "Advantech"
+        assert adv.website == "https://www.advantech.com/"
+        assert "vendors/advantech/nxp/advantech.yml" in adv.includes
+
+    def test_preset_vendor_includes_applied(self, registry_with_vendors_file):
+        """BSP preset resolve_preset() also applies vendor includes."""
+        from bsp.bsp_manager import BspManager
+        manager = BspManager(config_path=str(registry_with_vendors_file))
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("adv-imx8-scarthgap")
+        assert "vendors/advantech/nxp/advantech.yml" in resolved.kas_files
+
+
 class TestBspManagerTree:
     def test_tree_bsp_outputs_registry_header(self, registry_file, capsys):
         manager = BspManager(config_path=str(registry_file))

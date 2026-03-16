@@ -270,6 +270,32 @@ class VendorOverride:
 
 
 @dataclass
+class Vendor:
+    """
+    Board vendor definition.
+
+    A ``Vendor`` entry in ``Registry.vendors`` describes a hardware board
+    vendor (e.g. Advantech, QEMU).  The resolver matches the vendor ``slug``
+    against ``Device.vendor`` and, when a match is found, prepends the
+    vendor's ``includes`` in the KAS file list after the distro includes.
+
+    Attributes:
+        slug: Unique identifier for the vendor (e.g., 'advantech', 'qemu').
+              Must match the ``vendor`` field of the device definitions that
+              belong to this vendor.
+        name: Human-readable display name (e.g., 'Advantech')
+        description: Optional longer description of the vendor
+        website: Optional vendor website URL
+        includes: KAS configuration files common to all boards from this vendor
+    """
+    slug: str
+    name: str
+    description: str = ""
+    website: str = ""
+    includes: List[str] = field(default_factory=empty_list)
+
+
+@dataclass
 class Framework:
     """
     Build-system framework definition (e.g. Yocto, Isar).
@@ -458,6 +484,10 @@ class Registry:
         bsp: Optional list of named BSP presets (shortcuts)
         frameworks: Optional list of build-system framework definitions
         distro: Optional list of distribution/build-system definitions
+        vendors: Optional list of board vendor definitions.  When a vendor's
+                 ``slug`` matches a device's ``vendor`` field the resolver
+                 prepends the vendor's ``includes`` in the KAS file list
+                 (after distro includes, before release includes).
     """
     devices: List[Device] = field(default_factory=empty_list)
     releases: List[Release] = field(default_factory=empty_list)
@@ -465,6 +495,7 @@ class Registry:
     bsp: Optional[List[BspPreset]] = field(default_factory=empty_list)
     frameworks: List[Framework] = field(default_factory=empty_list)
     distro: List[Distro] = field(default_factory=empty_list)
+    vendors: List[Vendor] = field(default_factory=empty_list)
 
 
 @dataclass
