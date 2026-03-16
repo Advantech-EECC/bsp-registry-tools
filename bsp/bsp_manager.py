@@ -106,7 +106,34 @@ class BspManager:
     # Listing commands
     # ------------------------------------------------------------------
 
-    def list_bsp(self) -> None:
+    def _color_helpers(self, use_color: bool):
+        """
+        Return ``(header, name, dim)`` color-formatting helpers.
+
+        Each helper accepts a string and returns it wrapped in the
+        appropriate ANSI escape sequences when *use_color* is ``True``
+        and colorama is available; otherwise the string is returned
+        unchanged.
+        """
+        colored = use_color and COLORAMA_AVAILABLE
+
+        def _c(text: str, *styles) -> str:
+            if not colored:
+                return text
+            return "".join(styles) + text + Style.RESET_ALL
+
+        def _header(text: str) -> str:
+            return _c(text, Fore.CYAN, Style.BRIGHT)
+
+        def _name(text: str) -> str:
+            return _c(text, Fore.YELLOW)
+
+        def _dim(text: str) -> str:
+            return _c(text, Style.DIM)
+
+        return _header, _name, _dim
+
+    def list_bsp(self, use_color: bool = True) -> None:
         """
         List all BSP presets defined in the registry.
 
@@ -115,7 +142,12 @@ class BspManager:
 
         Presets that use the ``releases`` list are expanded and shown as
         individual entries (one per release).
+
+        Args:
+            use_color: Enable colored output (requires colorama).
         """
+        _header, _name, _dim = self._color_helpers(use_color)
+
         raw_presets = self.model.registry.bsp if self.model else []
         if not raw_presets:
             print("No BSP presets defined in registry")
@@ -126,34 +158,41 @@ class BspManager:
             return
 
         presets = self.resolver.list_presets()
-        print("Available BSP presets:")
+        print(_header("Available BSP presets:"))
         for preset in presets:
             features_str = (
                 f", features: {', '.join(preset.features)}" if preset.features else ""
             )
             print(
-                f"- {preset.name}: {preset.description} "
-                f"(device: {preset.device}, release: {preset.release}{features_str})"
+                f"- {_name(preset.name)}: {preset.description} "
+                + _dim(f"(device: {preset.device}, release: {preset.release}{features_str})")
             )
 
-    def list_devices(self) -> None:
-        """List all hardware devices defined in the registry."""
+    def list_devices(self, use_color: bool = True) -> None:
+        """
+        List all hardware devices defined in the registry.
+
+        Args:
+            use_color: Enable colored output (requires colorama).
+        """
+        _header, _name, _dim = self._color_helpers(use_color)
+
         devices = self.model.registry.devices if self.model else []
         if not devices:
             print("No devices found in registry")
             return
 
-        print("Available devices:")
+        print(_header("Available devices:"))
         for device in devices:
             soc_family = (
                 f", soc_family: {device.soc_family}" if device.soc_family else ""
             )
             print(
-                f"- {device.slug}: {device.description} "
-                f"(vendor: {device.vendor}, soc_vendor: {device.soc_vendor}{soc_family})"
+                f"- {_name(device.slug)}: {device.description} "
+                + _dim(f"(vendor: {device.vendor}, soc_vendor: {device.soc_vendor}{soc_family})")
             )
 
-    def list_releases(self, device_slug: Optional[str] = None) -> None:
+    def list_releases(self, device_slug: Optional[str] = None, use_color: bool = True) -> None:
         """
         List all release definitions in the registry.
 
@@ -164,7 +203,10 @@ class BspManager:
                          it has at least one vendor_overrides entry whose vendor
                          matches the device's board vendor.  When omitted, all
                          releases are shown.
+            use_color: Enable colored output (requires colorama).
         """
+        _header, _name, _dim = self._color_helpers(use_color)
+
         releases = self.model.registry.releases if self.model else []
         if not releases:
             print("No releases found in registry")
@@ -179,10 +221,9 @@ class BspManager:
                 if not r.vendor_overrides
                 or any(vo.vendor == device.vendor for vo in r.vendor_overrides)
             ]
-            print(f"Releases compatible with device '{device_slug}':")
+            print(_header(f"Releases compatible with device '{device_slug}':"))
         else:
-            print("Available releases:")
-            device = None
+            print(_header("Available releases:"))
 
         for release in releases:
             yocto = f" [Yocto {release.yocto_version}]" if release.yocto_version else ""
@@ -190,74 +231,105 @@ class BspManager:
             vendors = [vo.vendor for vo in release.vendor_overrides]
             vendor_str = f", vendor overrides: {', '.join(vendors)}" if vendors else ""
             env_str = f", environment: {release.environment}" if release.environment else ""
+            meta = f"{yocto}{isar}{vendor_str}{env_str}"
             print(
-                f"- {release.slug}: {release.description}{yocto}{isar}{vendor_str}{env_str}"
+                f"- {_name(release.slug)}: {release.description}"
+                + (_dim(meta) if meta else "")
             )
 
-    def list_features(self) -> None:
-        """List all feature definitions in the registry."""
+    def list_features(self, use_color: bool = True) -> None:
+        """
+        List all feature definitions in the registry.
+
+        Args:
+            use_color: Enable colored output (requires colorama).
+        """
+        _header, _name, _dim = self._color_helpers(use_color)
+
         features = self.model.registry.features if self.model else []
         if not features:
             print("No features found in registry")
             return
 
-        print("Available features:")
+        print(_header("Available features:"))
         for feature in features:
-            compat = ""
+            compat_parts = []
             if feature.compatibility:
-                parts = []
                 if feature.compatibility.vendor:
-                    parts.append(f"vendor: {feature.compatibility.vendor}")
+                    compat_parts.append(f"vendor: {feature.compatibility.vendor}")
                 if feature.compatibility.soc_vendor:
-                    parts.append(f"soc_vendor: {feature.compatibility.soc_vendor}")
+                    compat_parts.append(f"soc_vendor: {feature.compatibility.soc_vendor}")
                 if feature.compatibility.soc_family:
-                    parts.append(f"soc_family: {feature.compatibility.soc_family}")
-                if parts:
-                    compat = f" [requires {', '.join(parts)}]"
-            fw_compat = ""
+                    compat_parts.append(f"soc_family: {feature.compatibility.soc_family}")
             if feature.compatible_with:
-                fw_compat = f" [compatible_with: {', '.join(feature.compatible_with)}]"
-            print(f"- {feature.slug}: {feature.description}{compat}{fw_compat}")
+                compat_parts.append(f"compatible_with: {', '.join(feature.compatible_with)}")
+            compat_str = _dim(f" [requires {', '.join(compat_parts)}]") if compat_parts else ""
+            print(f"- {_name(feature.slug)}: {feature.description}{compat_str}")
 
-    def list_distros(self) -> None:
-        """List all distribution/build-system definitions in the registry."""
+    def list_distros(self, use_color: bool = True) -> None:
+        """
+        List all distribution/build-system definitions in the registry.
+
+        Args:
+            use_color: Enable colored output (requires colorama).
+        """
+        _header, _name, _dim = self._color_helpers(use_color)
+
         distros = self.model.registry.distro if self.model else []
         if not distros:
             print("No distros found in registry")
             return
 
-        print("Available distros:")
+        print(_header("Available distros:"))
         for distro in distros:
             fw_str = f", framework: {distro.framework}" if distro.framework else ""
-            print(f"- {distro.slug}: {distro.description} (vendor: {distro.vendor}{fw_str})")
+            print(
+                f"- {_name(distro.slug)}: {distro.description} "
+                + _dim(f"(vendor: {distro.vendor}{fw_str})")
+            )
 
-    def list_frameworks(self) -> None:
-        """List all build-system framework definitions in the registry."""
+    def list_frameworks(self, use_color: bool = True) -> None:
+        """
+        List all build-system framework definitions in the registry.
+
+        Args:
+            use_color: Enable colored output (requires colorama).
+        """
+        _header, _name, _dim = self._color_helpers(use_color)
+
         frameworks = self.model.registry.frameworks if self.model else []
         if not frameworks:
             print("No frameworks found in registry")
             return
 
-        print("Available frameworks:")
+        print(_header("Available frameworks:"))
         for framework in frameworks:
-            print(f"- {framework.slug}: {framework.description} (vendor: {framework.vendor})")
+            print(
+                f"- {_name(framework.slug)}: {framework.description} "
+                + _dim(f"(vendor: {framework.vendor})")
+            )
 
-    def list_containers(self) -> None:
-        """List all available containers in the registry."""
+    def list_containers(self, use_color: bool = True) -> None:
+        """
+        List all available containers in the registry.
+
+        Args:
+            use_color: Enable colored output (requires colorama).
+        """
+        _header, _name, _dim = self._color_helpers(use_color)
+
         if not self.containers:
             print("No container definitions found in registry")
             return
 
-        print("Available Containers:")
+        print(_header("Available Containers:"))
         for container_name, container_config in self.containers.items():
-            print(f"- {container_name}:")
-            print(f"    Image: {container_config.image}")
-            print(f"    File: {container_config.file}")
+            print(f"- {_name(container_name)}:")
+            print(f"    Image: {_dim(container_config.image)}")
+            print(f"    File: {_dim(container_config.file)}")
             if container_config.args:
-                print(
-                    f"    Args: "
-                    f"{', '.join([f'{arg.name}={arg.value}' for arg in container_config.args])}"
-                )
+                args_str = ', '.join([f'{arg.name}={arg.value}' for arg in container_config.args])
+                print(f"    Args: {_dim(args_str)}")
 
     def tree_bsp(self, use_color: bool = True) -> None:
         """
@@ -291,7 +363,7 @@ class BspManager:
             return _c(text, Fore.YELLOW)
 
         def _dim(text: str) -> str:
-            return _c(text, Style.DIM) if colored else text
+            return _c(text, Style.DIM)
 
         # -----------------------------------------------------------------
         # Tree connector characters

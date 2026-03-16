@@ -266,19 +266,20 @@ def main() -> int:
         elif args.command == "list":
             list_type = getattr(args, "list_type", None)
             device = getattr(args, "device", None)
+            use_color = not args.no_color
             if list_type == "devices":
-                bsp_mgr.list_devices()
+                bsp_mgr.list_devices(use_color=use_color)
             elif list_type == "releases":
-                bsp_mgr.list_releases(device_slug=device)
+                bsp_mgr.list_releases(device_slug=device, use_color=use_color)
             elif list_type == "features":
-                bsp_mgr.list_features()
+                bsp_mgr.list_features(use_color=use_color)
             elif list_type == "distros":
-                bsp_mgr.list_distros()
+                bsp_mgr.list_distros(use_color=use_color)
             else:
-                bsp_mgr.list_bsp()
+                bsp_mgr.list_bsp(use_color=use_color)
 
         elif args.command == "containers":
-            bsp_mgr.list_containers()
+            bsp_mgr.list_containers(use_color=not args.no_color)
 
         elif args.command == "tree":
             bsp_mgr.tree_bsp(use_color=not args.no_color)

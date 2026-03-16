@@ -112,3 +112,35 @@ registry:
         captured = capsys.readouterr()
         assert "BSP Registry" in captured.out
         assert "\x1b[" not in captured.out
+
+    def test_main_list_no_color_flag(self, registry_file, capsys):
+        with patch("sys.argv", ["bsp", "--registry", str(registry_file), "--no-color", "list"]):
+            exit_code = bsp.main()
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "test-bsp" in captured.out
+        assert "\x1b[" not in captured.out
+
+    def test_main_list_devices_no_color_flag(self, registry_file, capsys):
+        with patch("sys.argv", ["bsp", "--registry", str(registry_file), "--no-color", "list", "devices"]):
+            exit_code = bsp.main()
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "test-device" in captured.out
+        assert "\x1b[" not in captured.out
+
+    def test_main_list_releases_no_color_flag(self, registry_file, capsys):
+        with patch("sys.argv", ["bsp", "--registry", str(registry_file), "--no-color", "list", "releases"]):
+            exit_code = bsp.main()
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "test-release" in captured.out
+        assert "\x1b[" not in captured.out
+
+    def test_main_containers_no_color_flag(self, registry_file, capsys):
+        with patch("sys.argv", ["bsp", "--registry", str(registry_file), "--no-color", "containers"]):
+            exit_code = bsp.main()
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "ubuntu-22.04" in captured.out
+        assert "\x1b[" not in captured.out
