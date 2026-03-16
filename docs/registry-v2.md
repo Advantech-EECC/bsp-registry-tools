@@ -16,6 +16,7 @@ Schema v2.0 separates the registry into independent sections:
 | `bsp`          | Optional named presets (device + release + features)          |
 | `frameworks`   | Optional build-system framework definitions (Yocto, Isar, …) |
 | `distro`       | Optional distribution definitions (Poky, Isar distro, …)     |
+| `vendors`      | Optional top-level vendor definitions (cross-release vendor KAS includes) |
 | `include`      | Optional list of additional registry files to merge in        |
 
 Builds can be driven either by a **named preset** (`bsp build my-preset`) or by
@@ -64,6 +65,7 @@ containers:               # optional – Docker container definitions (dict)
 registry:
   frameworks: [...]       # optional list of build-system framework definitions
   distro: [...]           # optional list of distribution definitions
+  vendors: [...]          # optional list of top-level vendor definitions
   devices: [...]          # list of device definitions
   releases: [...]         # list of release definitions
   features: [...]         # list of feature definitions (may be empty)
@@ -433,6 +435,48 @@ registry:
 
 ---
 
+## `registry.vendors` (optional)
+
+Top-level vendor definitions group KAS configuration files that apply to **all**
+boards from a given hardware vendor, regardless of which release is being built.
+When the resolver finds a `registry.vendors` entry whose `slug` matches the
+device's `vendor` field it prepends those includes in the KAS file list (after
+distro includes but before release includes).
+
+This is useful for KAS fragments that are truly cross-release — for example a
+vendor-wide toolchain configuration or a shared download mirror setup — while
+release-specific or BSP-version-specific vendor additions belong in
+`releases[*].vendor_overrides` instead.
+
+```yaml
+registry:
+  vendors:
+    - slug: advantech                  # must match devices[*].vendor
+      name: "Advantech"
+      description: "Advantech Corporation"
+      website: "https://www.advantech.com/"
+      includes:
+        - vendors/advantech/nxp/advantech.yml   # added for ALL Advantech devices
+
+    - slug: qemu
+      name: "QEMU"
+      description: "QEMU emulator targets"
+      includes:
+        - vendors/qemu/qemu-base.yml
+```
+
+### `vendors[*]` fields
+
+| Field         | Type          | Description                                                                        |
+|---------------|---------------|------------------------------------------------------------------------------------|
+| `slug`        | string        | Unique vendor identifier (must match `devices[*].vendor`)                          |
+| `name`        | string        | Human-readable vendor name                                                         |
+| `description` | string (opt.) | Longer description of the vendor                                                   |
+| `website`     | string (opt.) | Vendor website URL                                                                 |
+| `includes`    | list[str]     | KAS configuration files applied to every device whose `vendor` matches this entry |
+
+---
+
 ## `registry.releases`
 
 Releases define Yocto / Isar base configurations shared across multiple devices.
@@ -448,7 +492,7 @@ registry:
       distro: poky                   # optional – references distro[*].slug
       includes:                      # base KAS files for this release
         - kas/scarthgap.yaml
-      vendor_includes:               # optional vendor-specific overrides
+      vendor_overrides:              # optional vendor-specific overrides
         - vendor: advantech
           includes:
             - kas/advantech/scarthgap-vendor.yaml
@@ -470,14 +514,109 @@ The optional `distro` field references a `registry.distro` entry.  When set
 the resolver prepends the distro's includes before the release includes and uses
 the distro's `framework` for `Feature.compatible_with` checks.
 
-### `releases[*].vendor_includes`
+### `releases[*].vendor_overrides`
 
-When a device's `vendor` matches a `vendor_includes` entry, those additional KAS
-files are added **after** the base release includes.
+`vendor_overrides` is an optional list of vendor-specific configuration overrides
+attached to a release.  Each entry targets one board vendor and can contribute:
 
-> **Note:** In v2.0, `vendor_includes` is stored in the registry for informational
-> purposes.  The resolver uses `device.vendor` to select relevant vendor overrides
-> automatically (this is on the roadmap for a future resolver improvement).
+- **common includes** added to every build that uses this vendor + release combination, and
+- **sub-releases** (optional, via the `releases` sub-list) that let a single top-level
+  release expose multiple BSP kernel/firmware versions for the same vendor.
+
+#### Basic usage — common vendor includes
+
+When a device's `vendor` matches a `vendor_overrides` entry (and no `override` slug is
+given on the preset), the resolver appends that entry's `includes` after the base
+release includes.
+
+```yaml
+releases:
+  - slug: scarthgap
+    distro: poky
+    description: "Yocto 5.0 LTS (Scarthgap)"
+    yocto_version: "5.0"
+    includes:
+      - kas/scarthgap.yaml
+    vendor_overrides:
+      - vendor: advantech
+        includes:
+          - kas/advantech/scarthgap-vendor.yaml   # added for every Advantech device
+```
+
+#### `vendor_overrides[*]` fields
+
+| Field      | Type          | Description                                                                                                  |
+|------------|---------------|--------------------------------------------------------------------------------------------------------------|
+| `vendor`   | string        | Board vendor name this override applies to (matches `devices[*].vendor`)                                     |
+| `includes` | list[str]     | KAS files added for every build using this vendor override                                                   |
+| `releases` | list (opt.)   | Vendor-specific sub-releases (see below)                                                                     |
+| `slug`     | string (opt.) | Unique identifier for this override entry.  Required when multiple overrides exist for the same vendor, or when a preset must select an override by `override:` field rather than by vendor matching. |
+| `distro`   | string (opt.) | Distro slug (references `distro[*].slug`) that **overrides** the release's own `distro` field when this vendor override is active.  Use this when a specific BSP combination requires a different distro (e.g. `poky-imx` instead of `poky`). |
+
+#### Sub-releases (`vendor_overrides[*].releases`)
+
+Sub-releases let a single top-level release (e.g. `scarthgap`) expose multiple
+BSP / kernel versions for the same vendor.  The preset's `vendor_release` field
+selects which sub-release to activate.
+
+```yaml
+releases:
+  - slug: scarthgap
+    distro: poky
+    description: "Yocto 5.0 LTS (Scarthgap)"
+    yocto_version: "5.0"
+    includes:
+      - kas/scarthgap.yaml
+    vendor_overrides:
+      - vendor: advantech
+        includes:
+          - kas/advantech/scarthgap-common.yaml  # common includes for all Advantech sub-releases
+        releases:
+          - slug: imx-6.6.53
+            description: "Scarthgap with i.MX BSP 6.6.53"
+            includes:
+              - kas/advantech/nxp/imx-6.6.53.yaml
+          - slug: imx-6.12.0
+            description: "Scarthgap with i.MX BSP 6.12.0"
+            includes:
+              - kas/advantech/nxp/imx-6.12.0.yaml
+```
+
+| Sub-release field | Type      | Description                                          |
+|-------------------|-----------|------------------------------------------------------|
+| `slug`            | string    | Unique sub-release identifier (referenced by `bsp[*].vendor_release`) |
+| `description`     | string    | Human-readable description                           |
+| `includes`        | list[str] | KAS files added when this sub-release is selected    |
+
+#### Slug-based override selection and distro override
+
+When multiple `vendor_overrides` entries exist for the same vendor (each with a
+distinct `slug`), a preset can select a specific entry using the `override` field
+instead of relying on vendor name matching.  Additionally, if the selected entry
+has a `distro` field it replaces the release's distro for that build.
+
+```yaml
+releases:
+  - slug: scarthgap
+    distro: poky                   # default distro for this release
+    description: "Yocto 5.0 LTS"
+    yocto_version: "5.0"
+    includes:
+      - kas/scarthgap.yaml
+    vendor_overrides:
+      - slug: imx-6.6.23-2.0.0    # selectable by preset override: field
+        vendor: advantech-europe
+        distro: poky-imx           # overrides release.distro for this entry
+        includes:
+          - kas/advantech-europe/nxp/imx-6.6.23-2.0.0-scarthgap.yaml
+      - slug: imx-6.6.36-2.1.0
+        vendor: advantech-europe
+        includes:
+          - kas/advantech-europe/nxp/imx-6.6.36-2.1.0-scarthgap.yaml
+      - vendor: advantech          # matched by vendor name (no slug needed)
+        includes:
+          - kas/advantech/nxp/scarthgap.yaml
+```
 
 ---
 
@@ -580,6 +719,41 @@ registry:
         path: build/imx8mp-adv-scarthgap-ota  # optional path override; auto-composed if absent
 ```
 
+### Preset with vendor sub-release (`vendor_release`)
+
+Use `vendor_release` to pin a specific BSP kernel/firmware version for the device's
+vendor.  The slug must match a `releases[*].vendor_overrides[*].releases[*].slug`
+entry.
+
+```yaml
+registry:
+  bsp:
+    - name: imx8mp-adv-scarthgap-imx6.6.53
+      description: "Advantech i.MX8MP Scarthgap with BSP 6.6.53"
+      device: imx8mp-adv
+      release: scarthgap
+      vendor_release: imx-6.6.53     # references vendor_overrides[vendor=advantech].releases[slug=imx-6.6.53]
+      features: []
+```
+
+### Preset with vendor override selection (`override`)
+
+Use `override` to select a specific `vendor_overrides` entry by its `slug`,
+bypassing vendor name matching.  This is needed when multiple override entries
+exist for the same vendor, or when the target override carries a `distro`
+substitution.
+
+```yaml
+registry:
+  bsp:
+    - name: rsb3720-scarthgap-imx6.6.23
+      description: "RSB-3720 Scarthgap (i.MX BSP 6.6.23)"
+      device: rsb3720
+      release: scarthgap
+      override: imx-6.6.23-2.0.0    # selects vendor_overrides entry with slug=imx-6.6.23-2.0.0
+      features: [systemd, security, virtualization]
+```
+
 ### Multi-release preset (simplified syntax)
 
 When the same device and feature set should target several releases, use the
@@ -607,15 +781,17 @@ registry:
 
 ### `bsp[*]` fields
 
-| Field         | Type          | Description                                                                     |
-|---------------|---------------|---------------------------------------------------------------------------------|
-| `name`        | string        | Unique preset name (referenced by CLI `bsp build <name>`)                       |
-| `description` | string        | Human-readable description                                                      |
-| `device`      | string        | Device slug (references `devices[*].slug`)                                      |
-| `release`     | string (opt.) | Single release slug (mutually exclusive with `releases`)                        |
-| `releases`    | list[str] (opt.) | List of release slugs; expanded into one preset per entry (mutually exclusive with `release`) |
-| `features`    | list[str]     | Optional list of feature slugs to enable (references `features[*].slug`)        |
-| `build`       | object (opt.) | Optional build overrides (container and/or output path)                         |
+| Field            | Type             | Description                                                                     |
+|------------------|------------------|---------------------------------------------------------------------------------|
+| `name`           | string           | Unique preset name (referenced by CLI `bsp build <name>`)                       |
+| `description`    | string           | Human-readable description                                                      |
+| `device`         | string           | Device slug (references `devices[*].slug`)                                      |
+| `release`        | string (opt.)    | Single release slug (mutually exclusive with `releases`)                        |
+| `releases`       | list[str] (opt.) | List of release slugs; expanded into one preset per entry (mutually exclusive with `release`) |
+| `vendor_release` | string (opt.)    | Vendor sub-release slug (references `releases[*].vendor_overrides[*].releases[*].slug`). Selects a specific BSP kernel/firmware version for the device's vendor. |
+| `override`       | string (opt.)    | Vendor override slug (references `releases[*].vendor_overrides[*].slug`). Selects a specific `vendor_overrides` entry by its `slug` field, bypassing vendor name matching. Useful when multiple overrides exist for the same vendor, or when the override carries a `distro` substitution. |
+| `features`       | list[str]        | Optional list of feature slugs to enable (references `features[*].slug`)        |
+| `build`          | object (opt.)    | Optional build overrides (container and/or output path)                         |
 
 ### `bsp[*].build` fields
 
@@ -629,12 +805,17 @@ registry:
 The resolver assembles the final KAS file list in the following order:
 
 ```
-framework.includes → distro.includes → release.includes → device.includes → feature.includes
+framework.includes → distro.includes → vendors[device.vendor].includes
+    → release.includes → vendor_overrides[vendor/override].includes
+    → vendor_overrides[*].releases[vendor_release].includes
+    → device.includes → feature.includes
 ```
 
 This ensures that base build-system configuration (framework) is loaded first, followed
-by distribution defaults, then release-specific settings, device-specific machine config,
-and finally any optional feature additions.
+by distribution defaults (which may be overridden by the active `vendor_overrides` entry's
+`distro` field), then vendor-wide includes, then release-specific settings, then any
+vendor override includes (common + selected sub-release), then device-specific machine
+config, and finally any optional feature additions.
 
 ---
 
@@ -749,7 +930,7 @@ registry:
       # No environment field → uses 'default' named environment
       includes:
         - kas/scarthgap.yaml
-      vendor_includes:
+      vendor_overrides:
         - vendor: advantech
           includes:
             - kas/advantech/scarthgap-vendor.yaml
