@@ -22,6 +22,7 @@ from .models import (
     NamedEnvironment,
     Release,
     RegistryRoot,
+    SocVendorOverride,
     Vendor,
     VendorOverride,
     empty_list,
@@ -357,6 +358,7 @@ class V2Resolver:
     def _apply_vendor_overrides(
         vendor_overrides: List[VendorOverride],
         device_vendor: str,
+        device_soc_vendor: Optional[str] = None,
         vendor_release_slug: Optional[str] = None,
         override_slug: Optional[str] = None,
     ) -> List[str]:
@@ -367,18 +369,32 @@ class V2Resolver:
         1. Find the ``VendorOverride`` entry whose ``slug`` matches
            *override_slug*.  If none found, return an empty list.
         2. Always add ``VendorOverride.includes`` (common vendor includes).
+        3. If the override has ``soc_vendors``, find the entry matching
+           *device_soc_vendor* and add its ``includes``.  Then, if
+           *vendor_release_slug* is given, look up the release in that
+           SoC vendor's ``releases`` list and append its includes.
+        4. When no ``soc_vendors`` are present fall back to the flat
+           ``VendorOverride.releases`` list (legacy behaviour).
 
         Resolution when *override_slug* is **not** given (legacy vendor matching):
         1. Find the ``VendorOverride`` entry whose ``vendor`` matches
            *device_vendor*.  If none found, return an empty list.
         2. Always add ``VendorOverride.includes`` (common vendor includes).
-        3. If *vendor_release_slug* is given, find the matching
-           ``VendorRelease`` inside the override and append its includes.
-           An unrecognized slug is silently ignored (callers validate earlier).
+        3. If the override has ``soc_vendors``, find the entry matching
+           *device_soc_vendor* and add its ``includes``.  Then, if
+           *vendor_release_slug* is given, look up the release in that
+           SoC vendor's ``releases`` list and append its includes.
+        4. When no ``soc_vendors`` are present, if *vendor_release_slug* is
+           given, find the matching ``VendorRelease`` inside the flat
+           ``releases`` list and append its includes.  An unrecognized slug
+           is silently ignored (callers validate earlier).
 
         Args:
             vendor_overrides: List of ``VendorOverride`` entries from a release.
             device_vendor: Board vendor of the device being resolved.
+            device_soc_vendor: SoC vendor of the device (e.g. 'nxp', 'mediatek').
+                Used to select the matching ``SocVendorOverride`` entry when the
+                active ``VendorOverride`` has ``soc_vendors`` defined.
             vendor_release_slug: Optional sub-release slug to look up.
             override_slug: Optional ``VendorOverride.slug`` to select a
                 specific override entry by slug instead of vendor matching.
@@ -387,25 +403,36 @@ class V2Resolver:
             Flat list of KAS file paths to append.
         """
         result: List[str] = []
+
+        def _apply_from_override(vo: VendorOverride) -> None:
+            result.extend(vo.includes)
+            if vo.soc_vendors and device_soc_vendor:
+                # Per-SoC-vendor path: find the matching SocVendorOverride.
+                for svo in vo.soc_vendors:
+                    if svo.vendor == device_soc_vendor:
+                        result.extend(svo.includes)
+                        if vendor_release_slug:
+                            for vr in svo.releases:
+                                if vr.slug == vendor_release_slug:
+                                    result.extend(vr.includes)
+                                    break
+                        break
+            elif vendor_release_slug:
+                # Legacy flat-releases path (no soc_vendors defined).
+                for vr in vo.releases:
+                    if vr.slug == vendor_release_slug:
+                        result.extend(vr.includes)
+                        break
+
         if override_slug:
             for vo in vendor_overrides:
                 if vo.slug == override_slug:
-                    result.extend(vo.includes)
-                    if vendor_release_slug:
-                        for vr in vo.releases:
-                            if vr.slug == vendor_release_slug:
-                                result.extend(vr.includes)
-                                break
+                    _apply_from_override(vo)
                     break
         else:
             for vo in vendor_overrides:
                 if vo.vendor == device_vendor:
-                    result.extend(vo.includes)
-                    if vendor_release_slug:
-                        for vr in vo.releases:
-                            if vr.slug == vendor_release_slug:
-                                result.extend(vr.includes)
-                                break
+                    _apply_from_override(vo)
                     break
         return result
 
@@ -485,12 +512,27 @@ class V2Resolver:
                     f"'{device.vendor}'"
                 )
                 sys.exit(1)
+            # Look for the release in the flat list first, then in soc_vendors.
             matching_vr = next(
                 (vr for vr in matching_vo.releases if vr.slug == vendor_release_slug),
                 None,
             )
+            if matching_vr is None and matching_vo.soc_vendors:
+                matching_svo = next(
+                    (svo for svo in matching_vo.soc_vendors if svo.vendor == device.soc_vendor),
+                    None,
+                )
+                if matching_svo:
+                    matching_vr = next(
+                        (vr for vr in matching_svo.releases if vr.slug == vendor_release_slug),
+                        None,
+                    )
             if matching_vr is None:
-                available = ", ".join(vr.slug for vr in matching_vo.releases) or "(none)"
+                # Collect all available slugs from flat releases and every soc_vendor's releases.
+                available_slugs: List[str] = [vr.slug for vr in matching_vo.releases]
+                for svo in matching_vo.soc_vendors:
+                    available_slugs.extend(vr.slug for vr in svo.releases)
+                available = ", ".join(available_slugs) or "(none)"
                 self.logger.error(
                     f"vendor_release '{vendor_release_slug}' not found in release "
                     f"'{release_slug}' / vendor '{device.vendor}'. "
@@ -537,22 +579,48 @@ class V2Resolver:
 
         # If the active vendor override has releases but no vendor_release_slug was
         # specified explicitly, default to the first available vendor release.
-        if active_vendor_override and active_vendor_override.releases and not vendor_release_slug:
-            vendor_release_slug = active_vendor_override.releases[0].slug
-            self.logger.debug(
-                f"No vendor_release specified; defaulting to first vendor release "
-                f"'{vendor_release_slug}' from override for vendor "
-                f"'{active_vendor_override.vendor}'."
-            )
+        # When soc_vendors are defined, look in the matching SoC vendor's releases.
+        if active_vendor_override and not vendor_release_slug:
+            if active_vendor_override.soc_vendors and device.soc_vendor:
+                matching_svo = next(
+                    (svo for svo in active_vendor_override.soc_vendors
+                     if svo.vendor == device.soc_vendor),
+                    None,
+                )
+                if matching_svo and matching_svo.releases:
+                    vendor_release_slug = matching_svo.releases[0].slug
+                    self.logger.debug(
+                        f"No vendor_release specified; defaulting to first vendor release "
+                        f"'{vendor_release_slug}' from soc_vendor override for soc_vendor "
+                        f"'{device.soc_vendor}' (board vendor '{active_vendor_override.vendor}')."
+                    )
+            elif active_vendor_override.releases:
+                vendor_release_slug = active_vendor_override.releases[0].slug
+                self.logger.debug(
+                    f"No vendor_release specified; defaulting to first vendor release "
+                    f"'{vendor_release_slug}' from override for vendor "
+                    f"'{active_vendor_override.vendor}'."
+                )
 
         # Determine the effective distro slug early so that feature compatibility
         # checks use the distro that will actually be built, not the release's
-        # default.  A vendor override's ``distro`` field takes precedence over the
-        # release-level ``distro``.
+        # default.  Priority (highest → lowest):
+        #   SocVendorOverride.distro > VendorOverride.distro > release.distro
+        active_soc_vendor_override: Optional[SocVendorOverride] = None
+        if active_vendor_override and active_vendor_override.soc_vendors and device.soc_vendor:
+            active_soc_vendor_override = next(
+                (svo for svo in active_vendor_override.soc_vendors
+                 if svo.vendor == device.soc_vendor),
+                None,
+            )
         effective_distro_slug: Optional[str] = (
-            active_vendor_override.distro
-            if active_vendor_override and active_vendor_override.distro
-            else release.distro
+            (active_soc_vendor_override.distro
+             if active_soc_vendor_override and active_soc_vendor_override.distro
+             else None)
+            or (active_vendor_override.distro
+                if active_vendor_override and active_vendor_override.distro
+                else None)
+            or release.distro
         )
 
         # Check compatibility for every requested feature
@@ -615,7 +683,8 @@ class V2Resolver:
             kas_files.extend(vendor_obj.includes)
         kas_files.extend(release.includes)
         kas_files.extend(self._apply_vendor_overrides(
-            release.vendor_overrides, device.vendor, vendor_release_slug, override_slug
+            release.vendor_overrides, device.vendor, device.soc_vendor,
+            vendor_release_slug, override_slug
         ))
         device_includes = device.includes if device.includes else (
             device.build.includes if device.build else []

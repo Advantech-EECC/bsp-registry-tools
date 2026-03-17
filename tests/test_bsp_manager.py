@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from bsp import BspManager, BspPreset, Docker, V2Resolver
-from .conftest import EMPTY_REGISTRY_YAML, REGISTRY_WITH_FEATURES_YAML, REGISTRY_WITH_FRAMEWORKS_YAML, REGISTRY_WITH_VENDOR_OVERRIDES_YAML
+from .conftest import EMPTY_REGISTRY_YAML, REGISTRY_WITH_FEATURES_YAML, REGISTRY_WITH_FRAMEWORKS_YAML, REGISTRY_WITH_VENDOR_OVERRIDES_YAML, REGISTRY_WITH_SOC_VENDOR_OVERRIDES_YAML
 
 
 class TestBspManagerInit:
@@ -2065,3 +2065,206 @@ class TestBspManagerTree:
         manager.tree_bsp(use_color=False, mode="full")
         captured = capsys.readouterr()
         assert "includes:" in captured.out
+
+
+class TestSocVendorOverrides:
+    """Tests for soc_vendors inside VendorOverride entries."""
+
+    def test_soc_vendor_override_loaded_from_yaml(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """SocVendorOverride entries are parsed correctly from YAML."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        release = manager.resolver.get_release("scarthgap")
+        vo = next(v for v in release.vendor_overrides if v.vendor == "advantech")
+        assert len(vo.soc_vendors) == 2
+        soc_vendors_by_vendor = {svo.vendor: svo for svo in vo.soc_vendors}
+        assert "nxp" in soc_vendors_by_vendor
+        assert "mediatek" in soc_vendors_by_vendor
+        nxp = soc_vendors_by_vendor["nxp"]
+        assert nxp.distro == "fsl-imx-xwayland"
+        assert "kas/yocto/vendors/advantech/nxp/scarthgap.yaml" in nxp.includes
+        assert len(nxp.releases) == 2
+
+    def test_board_vendor_common_includes_applied(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """VendorOverride.includes (common for all SoC families) are always added."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+        )
+        assert "kas/yocto/vendors/advantech/scarthgap.yaml" in resolved.kas_files
+
+    def test_soc_vendor_common_includes_applied_for_matching_soc_vendor(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """SocVendorOverride.includes for the matching SoC vendor are added."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+        )
+        assert "kas/yocto/vendors/advantech/nxp/scarthgap.yaml" in resolved.kas_files
+
+    def test_soc_vendor_common_includes_not_applied_for_other_soc_vendor(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """SocVendorOverride.includes for a non-matching SoC vendor are NOT added."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+        )
+        # MediaTek includes should not appear when resolving an NXP device
+        assert "kas/yocto/vendors/advantech/mediatek/scarthgap.yaml" not in resolved.kas_files
+
+    def test_soc_vendor_release_includes_applied_for_matching_release(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """The requested vendor_release within the SoC vendor override is added."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+        )
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml" in resolved.kas_files
+
+    def test_other_soc_vendor_release_not_applied(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """Only the selected vendor_release is included; the other NXP release is not."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+        )
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml" not in resolved.kas_files
+
+    def test_mediatek_soc_vendor_includes_applied_for_mediatek_device(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """MediaTek SoC vendor includes are added when resolving a MediaTek device."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-mt8186", "scarthgap", vendor_release_slug="mt8186-2.0"
+        )
+        assert "kas/yocto/vendors/advantech/mediatek/scarthgap.yaml" in resolved.kas_files
+        assert "kas/yocto/vendors/advantech/mediatek/mt8186-2.0.yaml" in resolved.kas_files
+
+    def test_nxp_includes_not_applied_for_mediatek_device(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """NXP SoC vendor includes are NOT added when resolving a MediaTek device."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-mt8186", "scarthgap", vendor_release_slug="mt8186-2.0"
+        )
+        assert "kas/yocto/vendors/advantech/nxp/scarthgap.yaml" not in resolved.kas_files
+
+    def test_soc_vendor_distro_overrides_release_distro_for_nxp(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """SocVendorOverride.distro overrides the release's distro for NXP devices."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+        )
+        # NXP soc_vendor has distro: fsl-imx-xwayland; release default is poky
+        assert "vendors/nxp/distro/fsl-imx-xwayland.yaml" in resolved.kas_files
+        assert "kas/poky/distro/poky.yaml" not in resolved.kas_files
+        assert resolved.effective_distro == "fsl-imx-xwayland"
+
+    def test_soc_vendor_distro_overrides_release_distro_for_mediatek(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """SocVendorOverride.distro overrides the release's distro for MediaTek devices."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-mt8186", "scarthgap", vendor_release_slug="mt8186-2.0"
+        )
+        assert "vendors/mediatek/distro/mt-distro.yaml" in resolved.kas_files
+        assert resolved.effective_distro == "mt-distro"
+
+    def test_kas_files_order_with_soc_vendors(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """KAS file order: framework -> distro -> release -> board-vendor common
+        -> soc-vendor common -> soc-vendor release -> device."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+        )
+        kas = resolved.kas_files
+        idx_framework = kas.index("kas/yocto/yocto.yaml")
+        idx_distro = kas.index("vendors/nxp/distro/fsl-imx-xwayland.yaml")
+        idx_release = kas.index("kas/poky/scarthgap.yaml")
+        idx_board_vendor = kas.index("kas/yocto/vendors/advantech/scarthgap.yaml")
+        idx_soc_vendor = kas.index("kas/yocto/vendors/advantech/nxp/scarthgap.yaml")
+        idx_soc_release = kas.index("kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml")
+        idx_device = kas.index("kas/adv-imx8.yaml")
+        assert idx_framework < idx_distro
+        assert idx_distro < idx_release
+        assert idx_release < idx_board_vendor
+        assert idx_board_vendor < idx_soc_vendor
+        assert idx_soc_vendor < idx_soc_release
+        assert idx_soc_release < idx_device
+
+    def test_soc_vendor_release_defaults_to_first_when_omitted(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """When no vendor_release_slug is given, the first soc_vendor release is auto-selected."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("adv-imx8", "scarthgap")
+        # First NXP sub-release (imx-6.6.53) should be auto-selected
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml" in resolved.kas_files
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml" not in resolved.kas_files
+
+    def test_invalid_vendor_release_in_soc_vendors_exits(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """Specifying an unknown vendor_release slug causes a SystemExit."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        with pytest.raises(SystemExit):
+            manager.resolver.resolve(
+                "adv-imx8", "scarthgap", vendor_release_slug="does-not-exist"
+            )
+
+    def test_non_advantech_device_not_affected(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """A device from a different board vendor is not affected by advantech soc_vendors."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("qemu-arm64", "scarthgap")
+        assert "kas/yocto/vendors/advantech/scarthgap.yaml" not in resolved.kas_files
+        assert "kas/yocto/vendors/advantech/nxp/scarthgap.yaml" not in resolved.kas_files
+
+    def test_preset_with_soc_vendor_release_resolved(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """A BSP preset specifying vendor_release resolves correctly via soc_vendors."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved, _preset = manager.resolver.resolve_preset("adv-imx8-scarthgap-imx6.6.53")
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml" in resolved.kas_files
+        assert resolved.effective_distro == "fsl-imx-xwayland"
+
+    def test_mediatek_preset_resolved(
+        self, registry_with_soc_vendor_overrides_file
+    ):
+        """A BSP preset for a MediaTek device resolves with the correct SoC vendor override."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        resolved, _preset = manager.resolver.resolve_preset("adv-mt8186-scarthgap-mt8186-2.0")
+        assert "kas/yocto/vendors/advantech/mediatek/mt8186-2.0.yaml" in resolved.kas_files
+        assert resolved.effective_distro == "mt-distro"

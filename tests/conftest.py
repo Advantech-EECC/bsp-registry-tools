@@ -1172,3 +1172,134 @@ def registry_with_vendor_override_slug_file(tmp_dir):
     registry_path = tmp_dir / "bsp-registry.yaml"
     registry_path.write_text(REGISTRY_WITH_VENDOR_OVERRIDE_SLUG_YAML)
     return registry_path
+
+
+# =============================================================================
+# Registry with soc_vendors inside vendor_overrides
+# =============================================================================
+
+REGISTRY_WITH_SOC_VENDOR_OVERRIDES_YAML = """
+specification:
+  version: "2.0"
+containers:
+  debian-bookworm:
+    image: "test/debian:bookworm"
+    file: null
+    args: []
+registry:
+  frameworks:
+    - slug: yocto
+      description: "Yocto Project build system"
+      vendor: "Yocto Project"
+      includes:
+        - kas/yocto/yocto.yaml
+  distro:
+    - slug: poky
+      description: "Poky (Yocto Project reference distro)"
+      vendor: yocto
+      framework: yocto
+      includes:
+        - kas/poky/distro/poky.yaml
+    - slug: fsl-imx-xwayland
+      description: "Freescale i.MX X Wayland distro"
+      vendor: nxp
+      framework: yocto
+      includes:
+        - vendors/nxp/distro/fsl-imx-xwayland.yaml
+    - slug: mt-distro
+      description: "MediaTek distro"
+      vendor: mediatek
+      framework: yocto
+      includes:
+        - vendors/mediatek/distro/mt-distro.yaml
+  devices:
+    - slug: adv-imx8
+      description: "Advantech i.MX8 Board (NXP SoC)"
+      vendor: advantech
+      soc_vendor: nxp
+      includes:
+        - kas/adv-imx8.yaml
+    - slug: adv-mt8186
+      description: "Advantech MT8186 Board (MediaTek SoC)"
+      vendor: advantech
+      soc_vendor: mediatek
+      includes:
+        - kas/adv-mt8186.yaml
+    - slug: qemu-arm64
+      description: "QEMU ARM64"
+      vendor: qemu
+      soc_vendor: arm
+      includes:
+        - kas/qemu/qemuarm64.yaml
+  releases:
+    - slug: scarthgap
+      distro: poky
+      description: "Yocto 5.0 LTS (Scarthgap)"
+      yocto_version: "5.0"
+      includes:
+        - kas/poky/scarthgap.yaml
+      vendor_overrides:
+        - vendor: advantech
+          includes:
+            - kas/yocto/vendors/advantech/scarthgap.yaml
+          soc_vendors:
+            - vendor: nxp
+              distro: fsl-imx-xwayland
+              includes:
+                - kas/yocto/vendors/advantech/nxp/scarthgap.yaml
+              releases:
+                - slug: imx-6.6.53
+                  description: "Scarthgap for i.MX 6.6.53"
+                  includes:
+                    - kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml
+                - slug: imx-6.12.0
+                  description: "Scarthgap for i.MX 6.12.0"
+                  includes:
+                    - kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml
+            - vendor: mediatek
+              distro: mt-distro
+              includes:
+                - kas/yocto/vendors/advantech/mediatek/scarthgap.yaml
+              releases:
+                - slug: mt8186-2.0
+                  description: "Scarthgap for MT8186 v2.0"
+                  includes:
+                    - kas/yocto/vendors/advantech/mediatek/mt8186-2.0.yaml
+  features: []
+  bsp:
+    - name: adv-imx8-scarthgap-imx6.6.53
+      description: "Advantech i.MX8 Scarthgap (imx-6.6.53)"
+      device: adv-imx8
+      release: scarthgap
+      vendor_release: imx-6.6.53
+      features: []
+      build:
+        container: "debian-bookworm"
+        path: build/adv-imx8-scarthgap-imx6.6.53
+    - name: adv-imx8-scarthgap-imx6.12.0
+      description: "Advantech i.MX8 Scarthgap (imx-6.12.0)"
+      device: adv-imx8
+      release: scarthgap
+      vendor_release: imx-6.12.0
+      features: []
+      build:
+        container: "debian-bookworm"
+        path: build/adv-imx8-scarthgap-imx6.12.0
+    - name: adv-mt8186-scarthgap-mt8186-2.0
+      description: "Advantech MT8186 Scarthgap (mt8186-2.0)"
+      device: adv-mt8186
+      release: scarthgap
+      vendor_release: mt8186-2.0
+      features: []
+      build:
+        container: "debian-bookworm"
+        path: build/adv-mt8186-scarthgap-mt8186-2.0
+"""
+
+
+@pytest.fixture
+def registry_with_soc_vendor_overrides_file(tmp_dir):
+    """Create a registry YAML with soc_vendors inside vendor_overrides."""
+    registry_path = tmp_dir / "bsp-registry.yaml"
+    registry_path.write_text(REGISTRY_WITH_SOC_VENDOR_OVERRIDES_YAML)
+    return registry_path

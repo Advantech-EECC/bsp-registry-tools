@@ -13,6 +13,7 @@ from bsp import (
     BspBuild,
     Device,
     VendorRelease,
+    SocVendorOverride,
     VendorOverride,
     Framework,
     Distro,
@@ -236,6 +237,47 @@ class TestV2DataClasses:
         assert vo.distro == "poky-imx"
         assert vo.vendor == "advantech-europe"
         assert vo.includes == ["adv-europe.yml"]
+
+    def test_soc_vendor_override_defaults(self):
+        svo = SocVendorOverride(vendor="nxp")
+        assert svo.vendor == "nxp"
+        assert svo.includes == []
+        assert svo.releases == []
+        assert svo.distro is None
+
+    def test_soc_vendor_override_full(self):
+        vr = VendorRelease(slug="imx-6.6.53", description="i.MX 6.6.53", includes=["imx.yml"])
+        svo = SocVendorOverride(
+            vendor="nxp",
+            distro="fsl-imx-xwayland",
+            includes=["adv-nxp.yml"],
+            releases=[vr],
+        )
+        assert svo.vendor == "nxp"
+        assert svo.distro == "fsl-imx-xwayland"
+        assert svo.includes == ["adv-nxp.yml"]
+        assert len(svo.releases) == 1
+        assert svo.releases[0].slug == "imx-6.6.53"
+
+    def test_vendor_override_with_soc_vendors(self):
+        vr_nxp = VendorRelease(slug="imx-6.6.53", description="NXP release")
+        vr_mtk = VendorRelease(slug="mt8186-2.0", description="MediaTek release")
+        svo_nxp = SocVendorOverride(vendor="nxp", includes=["adv-nxp.yml"], releases=[vr_nxp])
+        svo_mtk = SocVendorOverride(vendor="mediatek", includes=["adv-mtk.yml"], releases=[vr_mtk])
+        vo = VendorOverride(
+            vendor="advantech",
+            includes=["adv-common.yml"],
+            soc_vendors=[svo_nxp, svo_mtk],
+        )
+        assert vo.vendor == "advantech"
+        assert vo.includes == ["adv-common.yml"]
+        assert vo.soc_vendors == [] or len(vo.soc_vendors) == 2
+        assert len(vo.soc_vendors) == 2
+        assert vo.soc_vendors[0].vendor == "nxp"
+        assert vo.soc_vendors[1].vendor == "mediatek"
+        assert vo.releases == []
+        assert vo.slug is None
+        assert vo.distro is None
 
     def test_release_defaults(self):
         release = Release(slug="scarthgap", description="Scarthgap")

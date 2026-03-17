@@ -246,6 +246,40 @@ class VendorRelease:
 
 
 @dataclass
+class SocVendorOverride:
+    """
+    SoC-vendor-specific KAS configuration overrides within a board-vendor override.
+
+    ``SocVendorOverride`` entries live inside ``VendorOverride.soc_vendors`` and
+    allow a single board-vendor override (e.g. Advantech) to carry separate
+    include sets and sub-releases for each underlying SoC vendor (e.g. NXP,
+    MediaTek, Qualcomm).  The resolver matches the entry whose ``vendor`` field
+    equals ``Device.soc_vendor``.
+
+    Include ordering when a ``SocVendorOverride`` is active::
+
+        VendorOverride.includes          (common to all SoC families)
+        → SocVendorOverride.includes     (common to this SoC family)
+        → VendorRelease.includes         (specific sub-release, if requested)
+
+    Attributes:
+        vendor: SoC vendor slug this entry applies to (e.g. 'nxp', 'mediatek').
+                Must match ``Device.soc_vendor`` for the entry to be selected.
+        includes: KAS configuration files common to all sub-releases for this
+                  SoC vendor (e.g. a shared NXP BSP fragment).
+        releases: Optional list of vendor sub-releases specific to this SoC
+                  vendor (e.g. different NXP i.MX kernel versions).
+        distro: Optional distro slug that overrides both the parent
+                ``VendorOverride.distro`` and the release's own ``distro``
+                field when this SoC vendor override is active.
+    """
+    vendor: str
+    includes: List[str] = field(default_factory=empty_list)
+    releases: List[VendorRelease] = field(default_factory=empty_list)
+    distro: Optional[str] = None
+
+
+@dataclass
 class VendorOverride:
     """
     Vendor-specific KAS configuration overrides for a release.
@@ -258,6 +292,13 @@ class VendorOverride:
       i.MX kernel versions).  When the resolver is given a ``vendor_release``
       slug it looks up the matching ``VendorRelease`` entry and appends its
       includes after the common ``includes``.
+    * ``soc_vendors`` — Optional list of :class:`SocVendorOverride` entries,
+      one per SoC vendor family (e.g. NXP, MediaTek, Qualcomm).  When
+      present the resolver selects the entry whose ``vendor`` field matches
+      ``Device.soc_vendor`` and applies its ``includes`` and ``releases``
+      **after** the board-vendor-level ``includes``.  Use this instead of
+      (or in addition to) ``releases`` when a single board vendor ships
+      products based on multiple SoC families.
     * ``slug`` — Optional unique identifier that allows a BSP preset to
       reference this exact override entry via the preset's ``override`` field,
       independently of the ``vendor`` matching logic.  Multiple overrides for
@@ -265,12 +306,17 @@ class VendorOverride:
     * ``distro`` — Optional distro slug that overrides the release's own
       ``distro`` field when this vendor override is active.  Allows a specific
       vendor/BSP combination to be built against a different distro than the
-      parent release normally uses.
+      parent release normally uses.  A ``SocVendorOverride.distro`` takes
+      precedence over this field when both are set.
 
     Attributes:
         vendor: Board vendor name this override applies to
         includes: KAS files common to all sub-releases for this vendor
-        releases: Optional list of vendor-specific sub-releases
+        releases: Optional list of vendor-specific sub-releases (used when
+                  all boards from this vendor share the same SoC family)
+        soc_vendors: Optional list of per-SoC-vendor override entries (used
+                     when the board vendor ships products with multiple SoC
+                     families)
         slug: Optional unique identifier for this override entry
         distro: Optional distro slug that overrides the release distro for
                 this vendor override
@@ -278,6 +324,7 @@ class VendorOverride:
     vendor: str
     includes: List[str] = field(default_factory=empty_list)
     releases: List[VendorRelease] = field(default_factory=empty_list)
+    soc_vendors: List[SocVendorOverride] = field(default_factory=empty_list)
     slug: Optional[str] = None
     distro: Optional[str] = None
 
