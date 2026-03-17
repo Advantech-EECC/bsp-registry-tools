@@ -545,13 +545,14 @@ releases:
 
 #### `vendor_overrides[*]` fields
 
-| Field      | Type          | Description                                                                                                  |
-|------------|---------------|--------------------------------------------------------------------------------------------------------------|
-| `vendor`   | string        | Board vendor name this override applies to (matches `devices[*].vendor`)                                     |
-| `includes` | list[str]     | KAS files added for every build using this vendor override                                                   |
-| `releases` | list (opt.)   | Vendor-specific sub-releases (see below)                                                                     |
-| `slug`     | string (opt.) | Unique identifier for this override entry.  Required when multiple overrides exist for the same vendor, or when a preset must select an override by `override:` field rather than by vendor matching. |
-| `distro`   | string (opt.) | Distro slug (references `distro[*].slug`) that **overrides** the release's own `distro` field when this vendor override is active.  Use this when a specific BSP combination requires a different distro (e.g. `poky-imx` instead of `poky`). |
+| Field        | Type          | Description                                                                                                  |
+|--------------|---------------|--------------------------------------------------------------------------------------------------------------|
+| `vendor`     | string        | Board vendor name this override applies to (matches `devices[*].vendor`)                                     |
+| `includes`   | list[str]     | KAS files added for every build using this vendor override                                                   |
+| `releases`   | list (opt.)   | Vendor-specific sub-releases; used when all boards from this vendor share the same SoC family (see below)   |
+| `soc_vendors`| list (opt.)   | Per-SoC-vendor override entries; used when the board vendor ships boards based on multiple SoC families (NXP, MediaTek, Qualcomm, …).  Each entry targets one SoC vendor (see [SoC vendor overrides](#soc-vendor-overrides-vendor_overrides-soc_vendors)) |
+| `slug`       | string (opt.) | Unique identifier for this override entry.  Required when multiple overrides exist for the same vendor, or when a preset must select an override by `override:` field rather than by vendor matching. |
+| `distro`     | string (opt.) | Distro slug (references `distro[*].slug`) that **overrides** the release's own `distro` field when this vendor override is active.  Use this when a specific BSP combination requires a different distro (e.g. `poky-imx` instead of `poky`).  A `SocVendorOverride.distro` (see below) takes precedence over this field. |
 
 #### Sub-releases (`vendor_overrides[*].releases`)
 
@@ -607,13 +608,147 @@ bsp:
 | `description`     | string    | Human-readable description                           |
 | `includes`        | list[str] | KAS files added when this sub-release is selected    |
 
+#### SoC vendor overrides (`vendor_overrides[*].soc_vendors`)
+
+When a single board vendor ships boards based on **multiple SoC families** (e.g.
+Advantech boards based on NXP, MediaTek, or Qualcomm), the `soc_vendors` list
+allows each SoC family to carry its own set of includes, sub-releases, and
+optional distro override — all within a single `vendor_overrides` entry.
+
+The resolver selects the `soc_vendors` entry whose `vendor` field matches the
+**device's `soc_vendor`** field automatically.
+
+**Include ordering when `soc_vendors` is active:**
+
+```
+framework.includes
+  → distro.includes             (uses SocVendorOverride.distro if set, else VendorOverride.distro, else release.distro)
+  → vendors[device.vendor].includes
+  → release.includes
+  → VendorOverride.includes     (common for every SoC family)
+  → SocVendorOverride.includes  (specific to the matched SoC vendor)
+  → VendorRelease.includes      (sub-release, if vendor_release is set)
+  → device.includes
+  → feature.includes
+```
+
+**Distro resolution priority (highest → lowest):**
+
+1. `SocVendorOverride.distro`
+2. `VendorOverride.distro`
+3. `Release.distro`
+
+**Example — Advantech boards on NXP and MediaTek:**
+
+```yaml
+releases:
+  - slug: scarthgap
+    distro: poky
+    description: "Yocto 5.0 LTS (Scarthgap)"
+    yocto_version: "5.0"
+    includes:
+      - kas/scarthgap.yaml
+    vendor_overrides:
+      - vendor: advantech
+        includes:
+          - kas/advantech/scarthgap-common.yaml  # common for ALL Advantech boards
+        soc_vendors:
+          - vendor: nxp
+            distro: fsl-imx-xwayland    # overrides release.distro for NXP boards
+            includes:
+              - kas/advantech/nxp/scarthgap.yaml  # common for all Advantech/NXP boards
+            releases:
+              - slug: imx-6.6.53
+                description: "Scarthgap with i.MX BSP 6.6.53"
+                includes:
+                  - kas/advantech/nxp/imx-6.6.53.yaml
+              - slug: imx-6.12.0
+                description: "Scarthgap with i.MX BSP 6.12.0"
+                includes:
+                  - kas/advantech/nxp/imx-6.12.0.yaml
+          - vendor: mediatek
+            distro: mt-distro           # overrides release.distro for MediaTek boards
+            includes:
+              - kas/advantech/mediatek/scarthgap.yaml
+            releases:
+              - slug: mt8186-2.0
+                description: "Scarthgap for MT8186 v2.0"
+                includes:
+                  - kas/advantech/mediatek/mt8186-2.0.yaml
+```
+
+Presets for an NXP-based Advantech device and a MediaTek-based Advantech device:
+
+```yaml
+devices:
+  - slug: adv-imx8
+    vendor: advantech
+    soc_vendor: nxp       # → resolver selects soc_vendors[vendor=nxp]
+    includes:
+      - kas/boards/adv-imx8.yaml
+
+  - slug: adv-mt8186
+    vendor: advantech
+    soc_vendor: mediatek   # → resolver selects soc_vendors[vendor=mediatek]
+    includes:
+      - kas/boards/adv-mt8186.yaml
+
+bsp:
+  - name: adv-imx8-scarthgap-imx6.6.53
+    device: adv-imx8
+    release: scarthgap
+    vendor_release: imx-6.6.53     # references soc_vendors[vendor=nxp].releases[slug=imx-6.6.53]
+    features: []
+
+  - name: adv-mt8186-scarthgap-mt8186-2.0
+    device: adv-mt8186
+    release: scarthgap
+    vendor_release: mt8186-2.0     # references soc_vendors[vendor=mediatek].releases[slug=mt8186-2.0]
+    features: []
+```
+
+> **Note**: `soc_vendors` and `releases` are mutually exclusive within a single
+> `vendor_overrides` entry.  Use `releases` when every board from the vendor shares
+> the same SoC family; use `soc_vendors` when the vendor ships boards with multiple
+> SoC families.
+
+#### `soc_vendors[*]` fields
+
+| Field       | Type          | Description                                                                           |
+|-------------|---------------|---------------------------------------------------------------------------------------|
+| `vendor`    | string        | SoC vendor this entry applies to (matches `devices[*].soc_vendor`)                   |
+| `includes`  | list[str]     | KAS files added for every build using this SoC vendor override                       |
+| `releases`  | list (opt.)   | SoC-vendor-specific sub-releases (same structure as `vendor_overrides[*].releases`)  |
+| `distro`    | string (opt.) | Distro slug that overrides both the parent `VendorOverride.distro` and the release's own `distro` field when this SoC vendor override is active |
+
 #### Distro override
 
-The `distro` field on a `vendor_overrides` entry replaces the release's own
-`distro` for that build, regardless of which selection method activates the
-override (`override` slug, `vendor_release`, or auto-selection).  This allows a
-specific vendor/BSP combination to be built against a different distro (e.g.
-`fsl-imx-xwayland` instead of `poky`).
+The effective distro for a build is resolved using the following priority chain
+(highest wins):
+
+1. **`SocVendorOverride.distro`** — when `soc_vendors` is used and the matching
+   SoC vendor entry has a `distro` field.
+2. **`VendorOverride.distro`** — when the active `vendor_overrides` entry has a
+   `distro` field (and no `SocVendorOverride.distro` is set).
+3. **`Release.distro`** — the release's own default distro.
+
+This allows fine-grained control: a board vendor override can declare a common
+distro (e.g. a shared BSP base), while individual SoC vendor overrides can further
+specialize the distro for boards built on different SoC families.
+
+```yaml
+releases:
+  - slug: scarthgap
+    distro: poky                       # lowest priority
+    vendor_overrides:
+      - vendor: advantech
+        distro: vendor-default-distro  # overrides release.distro for all SoC families
+        soc_vendors:
+          - vendor: nxp
+            distro: fsl-imx-xwayland   # overrides vendor-default-distro for NXP boards
+          - vendor: mediatek
+            # no distro here → inherits advantech's vendor-default-distro
+```
 
 #### Slug-based override selection
 
@@ -879,7 +1014,7 @@ to every expanded preset.
 | `device`         | string           | Device slug (references `devices[*].slug`)                                      |
 | `release`        | string (opt.)    | Single release slug (mutually exclusive with `releases`)                        |
 | `releases`       | list[str] (opt.) | List of release slugs; expanded into one preset per entry (mutually exclusive with `release`) |
-| `vendor_release` | string (opt.)    | Vendor sub-release slug (references `releases[*].vendor_overrides[*].releases[*].slug`). Selects a specific BSP kernel/firmware version for the device's vendor. When omitted and the active `vendor_overrides` entry has sub-releases, the **first** sub-release is selected automatically. |
+| `vendor_release` | string (opt.)    | Vendor sub-release slug. Selects a specific BSP kernel/firmware version. When `soc_vendors` is used, the slug is looked up in the matching `SocVendorOverride.releases` list; otherwise it references the flat `releases[*].vendor_overrides[*].releases[*].slug`. When omitted and the active override has sub-releases, the **first** sub-release is selected automatically. |
 | `override`       | string (opt.)    | Vendor override slug (references `releases[*].vendor_overrides[*].slug`). Selects a specific `vendor_overrides` entry by its `slug` field, bypassing vendor name matching. Useful when multiple overrides exist for the same vendor, or when the override carries a `distro` substitution. |
 | `features`       | list[str]        | Optional list of feature slugs to enable (references `features[*].slug`)        |
 | `build`          | object (opt.)    | Optional build overrides (container and/or output path)                         |
@@ -896,11 +1031,22 @@ to every expanded preset.
 The resolver assembles the final KAS file list in the following order:
 
 ```
-framework.includes → distro.includes → vendors[device.vendor].includes
-    → release.includes → vendor_overrides[vendor/override].includes
-    → vendor_overrides[*].releases[vendor_release].includes
-    → device.includes → feature.includes
+framework.includes
+  → distro.includes           (effective distro; see distro override priority below)
+  → vendors[device.vendor].includes
+  → release.includes
+  → vendor_overrides[vendor/override].includes          (VendorOverride common includes)
+  → soc_vendors[device.soc_vendor].includes             (only when soc_vendors is used)
+  → soc_vendors[device.soc_vendor].releases[vendor_release].includes  (or flat releases[vendor_release].includes)
+  → device.includes
+  → feature.includes
 ```
+
+**Effective distro** is resolved in priority order (highest wins):
+
+1. `SocVendorOverride.distro` — when a matching `soc_vendors` entry has a `distro` field
+2. `VendorOverride.distro` — when the active `vendor_overrides` entry has a `distro` field
+3. `Release.distro` — the release's own default distro
 
 This ensures that base build-system configuration (framework) is loaded first, followed
 by distribution defaults (which may be overridden by the active `vendor_overrides` entry's
