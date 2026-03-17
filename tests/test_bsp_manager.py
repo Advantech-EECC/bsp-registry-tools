@@ -1139,6 +1139,15 @@ class TestMultiReleaseBspPreset:
         assert "qemu-arm64-styhead" in captured.out
         assert "qemu-x86-64-walnascar" in captured.out
 
+    def test_list_bsp_shows_vendor_release(self, registry_with_vendor_overrides_file, capsys):
+        """list_bsp() shows vendor_release slug in the preset description line."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        manager.list_bsp()
+        captured = capsys.readouterr()
+        assert "vendor_release" in captured.out
+        assert "imx-6.6.53" in captured.out
+
     def test_get_bsp_by_name_expanded(self, registry_with_multi_release_bsp_file):
         """get_bsp_by_name() finds an expanded preset by its full name."""
         manager = BspManager(config_path=str(registry_with_multi_release_bsp_file))
@@ -1391,6 +1400,32 @@ class TestVendorOverrides:
         assert "kirkstone" not in captured.out
         # generic-release has no vendor_overrides -> shown for all devices
         assert "generic-release" in captured.out
+
+    def test_list_releases_shows_vendor_overrides(self, registry_with_vendor_overrides_file, capsys):
+        """list_releases shows vendor override entries under each release."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        manager.list_releases()
+        captured = capsys.readouterr()
+        assert "override" in captured.out
+        assert "advantech" in captured.out
+
+    def test_list_releases_shows_vendor_release_slugs(self, registry_with_vendor_overrides_file, capsys):
+        """list_releases shows vendor release slugs under each vendor override."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        manager.list_releases()
+        captured = capsys.readouterr()
+        assert "imx-6.6.53" in captured.out
+        assert "imx-6.12.0" in captured.out
+
+    def test_list_releases_shows_vendor_override_distro(self, registry_with_vendor_overrides_file, capsys):
+        """list_releases shows distro override on vendor override entry."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        manager.list_releases()
+        captured = capsys.readouterr()
+        assert "fsl-imx-xwayland" in captured.out
 
     def test_vendor_overrides_loaded_from_yaml(self, registry_with_vendor_overrides_file):
         """vendor_overrides and their sub-releases are correctly parsed from YAML."""
@@ -1965,3 +2000,68 @@ class TestBspManagerTree:
         captured = capsys.readouterr()
         # The preset in the features registry has features listed
         assert "features:" in captured.out
+
+    # ------------------------------------------------------------------
+    # Tests for --compact and --full modes
+    # ------------------------------------------------------------------
+
+    def test_tree_bsp_compact_mode_no_sub_items(self, registry_with_vendor_overrides_file, capsys):
+        """compact mode should not print vendor override sub-lines."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="compact")
+        captured = capsys.readouterr()
+        # In compact mode there are no "vendor override:" sub-lines
+        assert "vendor override:" not in captured.out
+
+    def test_tree_bsp_compact_mode_has_release_slugs(self, registry_with_vendor_overrides_file, capsys):
+        """compact mode still lists release slugs."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="compact")
+        captured = capsys.readouterr()
+        assert "scarthgap" in captured.out
+
+    def test_tree_bsp_full_mode_shows_vendor_releases(self, registry_with_vendor_overrides_file, capsys):
+        """full mode should show individual vendor release slugs as sub-tree items."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="full")
+        captured = capsys.readouterr()
+        assert "vendor release" in captured.out
+        assert "imx-6.6.53" in captured.out
+        assert "imx-6.12.0" in captured.out
+
+    def test_tree_bsp_full_mode_shows_vendor_override_distro(self, registry_with_vendor_overrides_file, capsys):
+        """full mode shows distro override on vendor override entry."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="full")
+        captured = capsys.readouterr()
+        # The scarthgap vendor override for advantech has distro: fsl-imx-xwayland
+        assert "fsl-imx-xwayland" in captured.out
+
+    def test_tree_bsp_default_mode_shows_vendor_override_releases(self, registry_with_vendor_overrides_file, capsys):
+        """default mode shows vendor override with release slugs inline."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="default")
+        captured = capsys.readouterr()
+        assert "vendor override" in captured.out
+        assert "imx-6.6.53" in captured.out
+
+    def test_tree_bsp_default_mode_shows_vendor_override_distro(self, registry_with_vendor_overrides_file, capsys):
+        """default mode shows distro override inline in vendor override line."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False)
+        captured = capsys.readouterr()
+        assert "fsl-imx-xwayland" in captured.out
+
+    def test_tree_bsp_full_mode_shows_includes(self, registry_with_frameworks_file, capsys):
+        """full mode should output includes sections for frameworks and distros."""
+        manager = BspManager(config_path=str(registry_with_frameworks_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="full")
+        captured = capsys.readouterr()
+        assert "includes:" in captured.out

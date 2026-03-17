@@ -144,3 +144,32 @@ registry:
         captured = capsys.readouterr()
         assert "ubuntu-22.04" in captured.out
         assert "\x1b[" not in captured.out
+
+    def test_main_tree_full_flag(self, registry_with_vendor_overrides_file, capsys):
+        with patch("sys.argv", ["bsp", "--registry", str(registry_with_vendor_overrides_file), "--no-color", "tree", "--full"]):
+            exit_code = bsp.main()
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "vendor release" in captured.out
+        assert "imx-6.6.53" in captured.out
+
+    def test_main_tree_compact_flag(self, registry_with_vendor_overrides_file, capsys):
+        with patch("sys.argv", ["bsp", "--registry", str(registry_with_vendor_overrides_file), "--no-color", "tree", "--compact"]):
+            exit_code = bsp.main()
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "vendor override:" not in captured.out
+        assert "scarthgap" in captured.out
+
+    def test_main_tree_full_and_compact_mutually_exclusive(self, registry_file, capsys):
+        with patch("sys.argv", ["bsp", "--registry", str(registry_file), "tree", "--full", "--compact"]):
+            exit_code = bsp.main()
+        assert exit_code != 0
+
+    def test_main_list_releases_shows_vendor_overrides(self, registry_with_vendor_overrides_file, capsys):
+        with patch("sys.argv", ["bsp", "--registry", str(registry_with_vendor_overrides_file), "--no-color", "list", "releases"]):
+            exit_code = bsp.main()
+        assert exit_code == 0
+        captured = capsys.readouterr()
+        assert "override" in captured.out
+        assert "imx-6.6.53" in captured.out

@@ -110,7 +110,18 @@ def main() -> int:
         # ----------------------------------------------------------------
         # Tree command
         # ----------------------------------------------------------------
-        subparsers.add_parser("tree", help="Display a tree view of the BSP registry")
+        tree_parser = subparsers.add_parser("tree", help="Display a tree view of the BSP registry")
+        tree_mode_group = tree_parser.add_mutually_exclusive_group()
+        tree_mode_group.add_argument(
+            "--full",
+            action="store_true",
+            help="Show full details including includes and descriptions for all items"
+        )
+        tree_mode_group.add_argument(
+            "--compact",
+            action="store_true",
+            help="Show compact output with names/slugs only"
+        )
 
         # ----------------------------------------------------------------
         # Export command
@@ -282,7 +293,10 @@ def main() -> int:
             bsp_mgr.list_containers(use_color=not args.no_color)
 
         elif args.command == "tree":
-            bsp_mgr.tree_bsp(use_color=not args.no_color)
+            full = getattr(args, "full", False)
+            compact = getattr(args, "compact", False)
+            mode = "full" if full else ("compact" if compact else "default")
+            bsp_mgr.tree_bsp(use_color=not args.no_color, mode=mode)
 
         elif args.command == "export":
             device = getattr(args, "device", None)

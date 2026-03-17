@@ -160,12 +160,17 @@ class BspManager:
         presets = self.resolver.list_presets()
         print(_header("Available BSP presets:"))
         for preset in presets:
-            features_str = (
-                f", features: {', '.join(preset.features)}" if preset.features else ""
-            )
+            extra_parts = []
+            if preset.vendor_release:
+                extra_parts.append(f"vendor_release: {preset.vendor_release}")
+            if getattr(preset, "override", None):
+                extra_parts.append(f"override: {preset.override}")
+            if preset.features:
+                extra_parts.append(f"features: {', '.join(preset.features)}")
+            extra_str = (", " + ", ".join(extra_parts)) if extra_parts else ""
             print(
                 f"- {_name(preset.name)}: {preset.description} "
-                + _dim(f"(device: {preset.device}, release: {preset.release}{features_str})")
+                + _dim(f"(device: {preset.device}, release: {preset.release}{extra_str})")
             )
 
     def list_devices(self, use_color: bool = True) -> None:
@@ -195,6 +200,9 @@ class BspManager:
     def list_releases(self, device_slug: Optional[str] = None, use_color: bool = True) -> None:
         """
         List all release definitions in the registry.
+
+        For each release, vendor overrides are shown together with their
+        optional sub-releases (vendor releases).
 
         Args:
             device_slug: If provided, filter releases to those compatible with
@@ -228,14 +236,24 @@ class BspManager:
         for release in releases:
             yocto = f" [Yocto {release.yocto_version}]" if release.yocto_version else ""
             isar = f" [Isar {release.isar_version}]" if release.isar_version else ""
-            vendors = [vo.vendor for vo in release.vendor_overrides]
-            vendor_str = f", vendor overrides: {', '.join(vendors)}" if vendors else ""
+            distro_str = f", distro: {release.distro}" if release.distro else ""
             env_str = f", environment: {release.environment}" if release.environment else ""
-            meta = f"{yocto}{isar}{vendor_str}{env_str}"
+            meta = f"{yocto}{isar}{distro_str}{env_str}"
             print(
                 f"- {_name(release.slug)}: {release.description}"
                 + (_dim(meta) if meta else "")
             )
+            # Show vendor overrides and their sub-releases
+            for vo in release.vendor_overrides:
+                vo_parts = [f"vendor: {vo.vendor}"]
+                if vo.slug:
+                    vo_parts.append(f"slug: {vo.slug}")
+                if vo.distro:
+                    vo_parts.append(f"distro: {vo.distro}")
+                vo_line = "  " + _dim(f"  override [{', '.join(vo_parts)}]")
+                print(vo_line)
+                for vr in vo.releases:
+                    print("  " + _dim(f"    release: {vr.slug} — {vr.description}"))
 
     def list_features(self, use_color: bool = True) -> None:
         """
@@ -331,7 +349,7 @@ class BspManager:
                 args_str = ', '.join([f'{arg.name}={arg.value}' for arg in container_config.args])
                 print(f"    Args: {_dim(args_str)}")
 
-    def tree_bsp(self, use_color: bool = True) -> None:
+    def tree_bsp(self, use_color: bool = True, mode: str = "default") -> None:
         """
         Print a colored ASCII tree of the full BSP registry hierarchy.
 
@@ -343,6 +361,9 @@ class BspManager:
         Args:
             use_color: Enable colored output (requires colorama).  Ignored when
                        colorama is not installed.
+            mode: Display mode — ``"default"`` (standard detail level including
+                  vendor overrides/releases), ``"compact"`` (names/slugs only),
+                  or ``"full"`` (all details including includes lists).
         """
 
         colored = use_color and COLORAMA_AVAILABLE
@@ -365,6 +386,9 @@ class BspManager:
         def _dim(text: str) -> str:
             return _c(text, Style.DIM)
 
+        def _slug(text: str) -> str:
+            return _c(text, Fore.GREEN) if colored else text
+
         # -----------------------------------------------------------------
         # Tree connector characters
         # -----------------------------------------------------------------
@@ -373,13 +397,34 @@ class BspManager:
         PIPE   = "│   "
         BLANK  = "    "
 
+        compact = mode == "compact"
+        full    = mode == "full"
+
+        def _print_sub_lines(sub_lines: list, prefix: str) -> None:
+            """Print a list of already-formatted sub-lines with tree connectors."""
+            for idx, line in enumerate(sub_lines):
+                conn = LAST if idx == len(sub_lines) - 1 else BRANCH
+                print(f"{prefix}{conn}{line}")
+
+        def _print_includes(includes: list, prefix: str, label: str = "includes") -> None:
+            """Print an includes list as a sub-tree node.
+
+            Used in full mode to display KAS include file lists for frameworks,
+            distros, devices, features, vendor overrides, and vendor releases.
+            """
+            if not includes:
+                return
+            print(f"{prefix}{BRANCH}{_dim(label + ':')}")
+            inc_prefix = prefix + PIPE
+            for inc_idx, inc in enumerate(includes):
+                conn = LAST if inc_idx == len(includes) - 1 else BRANCH
+                print(f"{inc_prefix}{conn}{_dim(inc)}")
+
         # -----------------------------------------------------------------
         # Registry root
         # -----------------------------------------------------------------
         registry = self.model.registry if self.model else None
         print(_header("BSP Registry"))
-
-        sections = []
 
         # Determine which top-level sections are present and non-empty
         frameworks = (registry.frameworks or []) if registry else []
@@ -417,76 +462,146 @@ class BspManager:
                 # Per-section formatting
                 # -------------------------------------------------------
                 if sec_name == "Frameworks":
-                    detail = _dim(f" (vendor: {item.vendor})")
+                    detail = _dim(f" (vendor: {item.vendor})") if not compact else ""
                     print(f"{sec_prefix}{item_connector}{_name(item.slug)}: {item.description}{detail}")
+                    if full:
+                        _print_includes(item.includes, item_prefix)
 
                 elif sec_name == "Distros":
-                    parts = [f"vendor: {item.vendor}"] if item.vendor else []
-                    if item.framework:
-                        parts.append(f"framework: {item.framework}")
-                    detail = _dim(f" ({', '.join(parts)})") if parts else ""
+                    if not compact:
+                        parts = [f"vendor: {item.vendor}"] if item.vendor else []
+                        if item.framework:
+                            parts.append(f"framework: {item.framework}")
+                        detail = _dim(f" ({', '.join(parts)})") if parts else ""
+                    else:
+                        detail = ""
                     print(f"{sec_prefix}{item_connector}{_name(item.slug)}: {item.description}{detail}")
+                    if full:
+                        _print_includes(item.includes, item_prefix)
 
                 elif sec_name == "Releases":
-                    tags = []
-                    if item.yocto_version:
-                        tags.append(f"Yocto {item.yocto_version}")
-                    if item.isar_version:
-                        tags.append(f"Isar {item.isar_version}")
-                    tag_str = _dim(f" [{', '.join(tags)}]") if tags else ""
+                    if not compact:
+                        tags = []
+                        if item.yocto_version:
+                            tags.append(f"Yocto {item.yocto_version}")
+                        if item.isar_version:
+                            tags.append(f"Isar {item.isar_version}")
+                        tag_str = _dim(f" [{', '.join(tags)}]") if tags else ""
+                    else:
+                        tag_str = ""
                     print(f"{sec_prefix}{item_connector}{_name(item.slug)}: {item.description}{tag_str}")
 
-                    # Sub-items: distro + vendor overrides
-                    sub_items = []
-                    if item.distro:
-                        sub_items.append(_dim(f"distro: {item.distro}"))
-                    for vo in item.vendor_overrides:
-                        vr_names = [vr.slug for vr in vo.releases]
-                        vr_str   = (
-                            f" (sub-releases: {', '.join(vr_names)})" if vr_names else ""
-                        )
-                        sub_items.append(_dim(f"vendor override: {vo.vendor}{vr_str}"))
+                    if compact:
+                        continue
 
-                    for sub_idx, sub_line in enumerate(sub_items):
-                        sub_conn = LAST if sub_idx == len(sub_items) - 1 else BRANCH
-                        print(f"{item_prefix}{sub_conn}{sub_line}")
+                    # Sub-items: distro + vendor overrides
+                    # Build a flat list for compact/default; use nested tree for full
+                    if full:
+                        sub_lines = []
+                        if item.distro:
+                            sub_lines.append(_dim(f"distro: {item.distro}"))
+                        if item.includes:
+                            sub_lines.append(_dim(f"includes: {', '.join(item.includes)}"))
+                        _print_sub_lines(sub_lines, item_prefix)
+
+                        # Vendor overrides as a nested sub-tree
+                        for vo_idx, vo in enumerate(item.vendor_overrides):
+                            is_last_vo = vo_idx == len(item.vendor_overrides) - 1
+                            vo_conn   = LAST if is_last_vo else BRANCH
+                            vo_prefix = item_prefix + (BLANK if is_last_vo else PIPE)
+
+                            vo_tags = []
+                            if vo.slug:
+                                vo_tags.append(f"slug: {vo.slug}")
+                            if vo.distro:
+                                vo_tags.append(f"distro: {vo.distro}")
+                            vo_tag_str = _dim(f" ({', '.join(vo_tags)})") if vo_tags else ""
+                            print(
+                                f"{item_prefix}{vo_conn}"
+                                f"{_dim('vendor override: ')}{_slug(vo.vendor)}{vo_tag_str}"
+                            )
+
+                            # Vendor override includes
+                            vo_sub = []
+                            if vo.includes:
+                                vo_sub.append(_dim(f"includes: {', '.join(vo.includes)}"))
+                            _print_sub_lines(vo_sub, vo_prefix)
+
+                            # Vendor releases
+                            for vr_idx, vr in enumerate(vo.releases):
+                                is_last_vr = vr_idx == len(vo.releases) - 1
+                                vr_conn   = LAST if is_last_vr else BRANCH
+                                vr_prefix = vo_prefix + (BLANK if is_last_vr else PIPE)
+                                print(
+                                    f"{vo_prefix}{vr_conn}"
+                                    f"{_dim('vendor release: ')}{_slug(vr.slug)}: {vr.description}"
+                                )
+                                _print_includes(vr.includes, vr_prefix)
+                    else:
+                        # default mode: flat sub-lines showing distro + vendor overrides
+                        sub_items = []
+                        if item.distro:
+                            sub_items.append(_dim(f"distro: {item.distro}"))
+                        for vo in item.vendor_overrides:
+                            vo_parts = [f"vendor override: {vo.vendor}"]
+                            if vo.slug:
+                                vo_parts.append(f"slug: {vo.slug}")
+                            if vo.distro:
+                                vo_parts.append(f"distro: {vo.distro}")
+                            vr_names = [vr.slug for vr in vo.releases]
+                            if vr_names:
+                                vo_parts.append(f"releases: {', '.join(vr_names)}")
+                            sub_items.append(_dim(", ".join(vo_parts)))
+                        _print_sub_lines(sub_items, item_prefix)
 
                 elif sec_name == "Devices":
-                    parts = [f"vendor: {item.vendor}", f"soc_vendor: {item.soc_vendor}"]
-                    if item.soc_family:
-                        parts.append(f"soc_family: {item.soc_family}")
-                    detail = _dim(f" ({', '.join(parts)})")
+                    if not compact:
+                        parts = [f"vendor: {item.vendor}", f"soc_vendor: {item.soc_vendor}"]
+                        if item.soc_family:
+                            parts.append(f"soc_family: {item.soc_family}")
+                        detail = _dim(f" ({', '.join(parts)})")
+                    else:
+                        detail = ""
                     print(f"{sec_prefix}{item_connector}{_name(item.slug)}: {item.description}{detail}")
+                    if full:
+                        _print_includes(item.includes, item_prefix)
 
                 elif sec_name == "Features":
-                    compat_parts = []
-                    if item.compatibility:
-                        if item.compatibility.vendor:
-                            compat_parts.append(f"vendor: {item.compatibility.vendor}")
-                        if item.compatibility.soc_vendor:
-                            compat_parts.append(f"soc_vendor: {item.compatibility.soc_vendor}")
-                        if item.compatibility.soc_family:
-                            compat_parts.append(f"soc_family: {item.compatibility.soc_family}")
-                    if item.compatible_with:
-                        compat_parts.append(f"compatible_with: {', '.join(item.compatible_with)}")
-                    compat_str = _dim(f" [requires {', '.join(compat_parts)}]") if compat_parts else ""
+                    if not compact:
+                        compat_parts = []
+                        if item.compatibility:
+                            if item.compatibility.vendor:
+                                compat_parts.append(f"vendor: {item.compatibility.vendor}")
+                            if item.compatibility.soc_vendor:
+                                compat_parts.append(f"soc_vendor: {item.compatibility.soc_vendor}")
+                            if item.compatibility.soc_family:
+                                compat_parts.append(f"soc_family: {item.compatibility.soc_family}")
+                        if item.compatible_with:
+                            compat_parts.append(f"compatible_with: {', '.join(item.compatible_with)}")
+                        compat_str = _dim(f" [requires {', '.join(compat_parts)}]") if compat_parts else ""
+                    else:
+                        compat_str = ""
                     print(f"{sec_prefix}{item_connector}{_name(item.slug)}: {item.description}{compat_str}")
+                    if full:
+                        _print_includes(item.includes, item_prefix)
 
                 elif sec_name == "BSP Presets":
                     print(f"{sec_prefix}{item_connector}{_name(item.name)}: {item.description}")
+                    if compact:
+                        continue
                     sub_lines = []
                     sub_lines.append(
                         _dim(f"device: {item.device}  release: {item.release}")
                     )
                     if item.vendor_release:
                         sub_lines.append(_dim(f"vendor release: {item.vendor_release}"))
+                    if full and getattr(item, "override", None):
+                        sub_lines.append(_dim(f"override: {item.override}"))
                     if item.features:
                         sub_lines.append(
                             _dim(f"features: {', '.join(item.features)}")
                         )
-                    for sub_idx, sub_line in enumerate(sub_lines):
-                        sub_conn = LAST if sub_idx == len(sub_lines) - 1 else BRANCH
-                        print(f"{item_prefix}{sub_conn}{sub_line}")
+                    _print_sub_lines(sub_lines, item_prefix)
 
         if not sections:
             print(f"{LAST}{_dim('(empty registry)')}")
