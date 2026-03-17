@@ -825,22 +825,50 @@ When the same device and feature set should target several releases, use the
 ```yaml
 registry:
   bsp:
-    # This single entry expands into:
-    #   imx8mp-adv-scarthgap  →  build/poky-imx8mp-adv-scarthgap
-    #   imx8mp-adv-styhead    →  build/poky-imx8mp-adv-styhead
+    # Example 1 – explicit build.path used as base:
+    #   This single entry expands into:
+    #   imx8mp-adv-scarthgap  →  build/imx8mp-adv-scarthgap
+    #   imx8mp-adv-styhead    →  build/imx8mp-adv-styhead
     - name: imx8mp-adv
       description: "Advantech i.MX8MP baseline"
       device: imx8mp-adv
       releases: [scarthgap, styhead]   # expands into one preset per release slug
       features: []
       build:
-        container: "debian-bookworm"   # container override is preserved per expansion;
-                                       # build path is always auto-composed
+        container: "debian-bookworm"   # container override is preserved per expansion
+        path: build/imx8mp-adv         # used as base; release slug is appended automatically
+
+    # Example 2 – no explicit build.path; path is auto-composed from preset name:
+    #   rom2820-scarthgap  →  build/rom2820-scarthgap
+    #   rom2820-styhead    →  build/rom2820-styhead
+    #   rom2820-walnascar  →  build/rom2820-walnascar
+    - name: rom2820
+      description: "Advantech ROM-2820"
+      device: rom2820
+      releases: [scarthgap, styhead, walnascar]
+      features: [systemd]
+      # No build: block → path is auto-composed as build/{name}-{release_slug}
 ```
 
 > **Note**: `release` (singular) and `releases` (plural) are mutually exclusive.
 > Exactly one must be specified per preset entry.  When `releases` is used the
 > expanded preset names follow the pattern `{name}-{release_slug}`.
+
+#### Build path for multi-release presets
+
+When the `releases` list is used the per-release build path is computed as:
+
+```
+{build.path or "build/{name}"}-{release_slug}[-{override_slug}]
+```
+
+- If `build.path` is set, it is used as the base directory stem.  The release
+  slug (and the vendor override slug when `override` is also set) is appended
+  with a `-` separator.
+- If `build.path` is omitted, the base is formed from `build/{preset.name}`.
+
+In both cases the `build.container` override (if present) is applied unchanged
+to every expanded preset.
 
 ### `bsp[*]` fields
 
@@ -861,7 +889,7 @@ registry:
 | Field       | Type          | Description                                                                       |
 |-------------|---------------|-----------------------------------------------------------------------------------|
 | `container` | string (opt.) | Container name override (key in `containers` section). When absent the container is taken from the release's named environment (or `"default"`). |
-| `path`      | string (opt.) | Build output directory. When absent the path is auto-composed as `build/<distro>-<device>-<release>[-<feature>…]`. Ignored when `releases` (plural) is used — the path is always auto-composed for expanded presets. |
+| `path`      | string (opt.) | Build output directory. When absent, the path is auto-composed as `build/<distro>-<device>-<release>[-<feature>…]` for single-release presets, or `build/<name>-<release_slug>[-<override_slug>]` for multi-release presets. When `releases` (plural) is used, this value is treated as a *base path stem*: the release slug (and the vendor override slug when `override` is set) is appended to it — e.g. `path: build/my-bsp` expands to `build/my-bsp-scarthgap` and `build/my-bsp-styhead`. |
 
 ### KAS file ordering
 
