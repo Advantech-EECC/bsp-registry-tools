@@ -1281,20 +1281,22 @@ class TestVendorOverrides:
         assert "kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml" not in resolved.kas_files
 
     def test_vendor_overrides_kas_files_order(self, registry_with_vendor_overrides_file):
-        """KAS file order: distro.includes -> release.includes -> vendor common
-        -> vendor sub-release -> device.includes."""
+        """KAS file order: framework.includes -> distro.includes (override distro)
+        -> release.includes -> vendor common -> vendor sub-release -> device.includes."""
         manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
         manager.initialize()
         resolved = manager.resolver.resolve(
             "adv-imx8", "scarthgap", vendor_release_slug="imx-6.12.0"
         )
         kas = resolved.kas_files
-        idx_distro = kas.index("kas/poky/distro/poky.yaml")
+        # The advantech scarthgap override has distro: fsl-imx-xwayland, which has framework: yocto.
+        idx_framework = kas.index("kas/yocto/yocto.yaml")
+        idx_distro = kas.index("vendors/nxp/distro/fsl-imx-xwayland.yaml")
         idx_release = kas.index("kas/poky/scarthgap.yaml")
         idx_vendor_common = kas.index("kas/yocto/vendors/advantech/scarthgap.yaml")
         idx_vendor_sub = kas.index("kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml")
         idx_device = kas.index("kas/adv-imx8.yaml")
-        assert idx_distro < idx_release < idx_vendor_common < idx_vendor_sub < idx_device
+        assert idx_framework < idx_distro < idx_release < idx_vendor_common < idx_vendor_sub < idx_device
 
     def test_release_without_vendor_overrides_unaffected(
         self, registry_with_vendor_overrides_file
@@ -1419,6 +1421,77 @@ class TestVendorOverrides:
         assert not any(
             "automatically selecting" in msg.lower() for msg in caplog.messages
         )
+
+    def test_vendor_release_distro_override_applies_distro_includes(
+        self, registry_with_vendor_overrides_file
+    ):
+        """When VendorOverride.distro is set, its distro includes appear in kas_files."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        # scarthgap advantech override has distro: fsl-imx-xwayland
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+        )
+        assert "vendors/nxp/distro/fsl-imx-xwayland.yaml" in resolved.kas_files
+
+    def test_vendor_release_distro_override_applies_framework_includes(
+        self, registry_with_vendor_overrides_file
+    ):
+        """When VendorOverride.distro has a framework, framework.includes are added."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        # fsl-imx-xwayland has framework: yocto, so yocto.yaml should be present
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+        )
+        assert "kas/yocto/yocto.yaml" in resolved.kas_files
+
+    def test_vendor_release_distro_override_replaces_release_distro(
+        self, registry_with_vendor_overrides_file
+    ):
+        """When VendorOverride.distro is set, the release's default distro is NOT used."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        # scarthgap.distro = poky; the advantech override replaces it with fsl-imx-xwayland
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+        )
+        assert "kas/poky/distro/poky.yaml" not in resolved.kas_files
+
+    def test_vendor_release_without_override_distro_uses_release_distro(
+        self, registry_with_vendor_overrides_file
+    ):
+        """When VendorOverride has no distro field, the release's distro is used."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        # kirkstone advantech override has no distro field → fall back to release.distro=poky
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "kirkstone", vendor_release_slug="imx-5.15.52"
+        )
+        assert "kas/poky/distro/poky.yaml" in resolved.kas_files
+        assert "vendors/nxp/distro/fsl-imx-xwayland.yaml" not in resolved.kas_files
+
+    def test_vendor_release_effective_distro_stored_in_resolved(
+        self, registry_with_vendor_overrides_file
+    ):
+        """ResolvedConfig.effective_distro is the override distro when vendor_release is used."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8", "scarthgap", vendor_release_slug="imx-6.6.53"
+        )
+        assert resolved.effective_distro == "fsl-imx-xwayland"
+
+    def test_vendor_release_build_path_uses_effective_distro(
+        self, registry_with_vendor_overrides_file
+    ):
+        """Auto-composed build path uses the override distro slug, not the release distro."""
+        manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
+        manager.initialize()
+        # adv-imx8-scarthgap-imx-6.6.53-autopath has no explicit path
+        resolved, _ = manager.resolver.resolve_preset("adv-imx8-scarthgap-imx-6.6.53-autopath")
+        assert "fsl-imx-xwayland" in resolved.build_path
+        assert "poky" not in resolved.build_path
 
 
 class TestVendorOverrideSlug:

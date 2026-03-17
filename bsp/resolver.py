@@ -492,6 +492,9 @@ class V2Resolver:
                     f"Available: {available}"
                 )
                 sys.exit(1)
+            # Pin the active override so its distro field is picked up when
+            # computing effective_distro_slug later in the function.
+            active_vendor_override = matching_vo
 
         # Auto-select the first matching vendor override when vendor_overrides exist
         # but neither override_slug nor vendor_release_slug was explicitly specified.
@@ -531,7 +534,7 @@ class V2Resolver:
         # checks use the distro that will actually be built, not the release's
         # default.  A vendor override's ``distro`` field takes precedence over the
         # release-level ``distro``.
-        effective_distro: Optional[str] = (
+        effective_distro_slug: Optional[str] = (
             active_vendor_override.distro
             if active_vendor_override and active_vendor_override.distro
             else release.distro
@@ -542,7 +545,7 @@ class V2Resolver:
             if not self.check_feature_compatibility(feature, device):
                 sys.exit(1)
             if not self.check_feature_framework_compatibility(
-                feature, release, effective_distro_slug=effective_distro
+                feature, release, effective_distro_slug=effective_distro_slug
             ):
                 sys.exit(1)
 
@@ -582,8 +585,8 @@ class V2Resolver:
         #        -> device.includes -> feature.includes
         # Prefer device.includes (new style); fall back to device.build.includes (legacy).
         kas_files: List[str] = []
-        if effective_distro:
-            distro_obj = self.get_distro(effective_distro)
+        if effective_distro_slug:
+            distro_obj = self.get_distro(effective_distro_slug)
             if distro_obj.framework:
                 framework_obj = self.get_framework(distro_obj.framework)
                 kas_files.extend(framework_obj.includes)
@@ -649,7 +652,7 @@ class V2Resolver:
             local_conf=local_conf,
             env=env,
             copy=merged_copy,
-            effective_distro=effective_distro,
+            effective_distro=effective_distro_slug,
         )
 
     def _compose_build_path(self, resolved: ResolvedConfig) -> str:

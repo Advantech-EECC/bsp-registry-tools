@@ -800,12 +800,25 @@ containers:
     file: null
     args: []
 registry:
+  frameworks:
+    - slug: yocto
+      description: "Yocto Project build system"
+      vendor: "Yocto Project"
+      includes:
+        - kas/yocto/yocto.yaml
   distro:
     - slug: poky
       description: "Poky (Yocto Project reference distro)"
       vendor: yocto
+      framework: yocto
       includes:
         - kas/poky/distro/poky.yaml
+    - slug: fsl-imx-xwayland
+      description: "Freescale i.MX X Wayland (Yocto Project reference distro)"
+      vendor: nxp
+      framework: yocto
+      includes:
+        - vendors/nxp/distro/fsl-imx-xwayland.yaml
   devices:
     - slug: adv-imx8
       description: "Advantech i.MX8 Board"
@@ -828,6 +841,7 @@ registry:
         - kas/poky/scarthgap.yaml
       vendor_overrides:
         - vendor: advantech
+          distro: fsl-imx-xwayland
           includes:
             - kas/yocto/vendors/advantech/scarthgap.yaml
           releases:
@@ -880,6 +894,14 @@ registry:
       build:
         container: "debian-bookworm"
         path: build/adv-imx8-scarthgap-imx6.12.0
+    - name: adv-imx8-scarthgap-imx-6.6.53-autopath
+      description: "Advantech i.MX8 Scarthgap (imx-6.6.53) with auto-composed path"
+      device: adv-imx8
+      release: scarthgap
+      vendor_release: imx-6.6.53
+      features: []
+      build:
+        container: "debian-bookworm"
     - name: qemu-arm64-scarthgap
       description: "QEMU ARM64 Scarthgap BSP"
       device: qemu-arm64
