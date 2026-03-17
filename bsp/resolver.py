@@ -50,6 +50,10 @@ class ResolvedConfig:
               resolved from the global registry copy, the active named
               environment copy, and the device-level copy (in that order).
               All paths are relative to the registry file's parent directory.
+        effective_distro: Effective distro slug used for the build.  This is
+                          the vendor override's distro (if set) or the
+                          release's distro.  Used by ``_compose_build_path``
+                          and available to callers that need the actual distro.
     """
     device: Device
     release: Release
@@ -60,6 +64,7 @@ class ResolvedConfig:
     local_conf: List[str] = field(default_factory=empty_list)
     env: List[EnvironmentVariable] = field(default_factory=empty_list)
     copy: List[Dict[str, str]] = field(default_factory=empty_list)
+    effective_distro: Optional[str] = None
 
 
 # =============================================================================
@@ -281,7 +286,10 @@ class V2Resolver:
         return True
 
     def check_feature_framework_compatibility(
-        self, feature: Feature, release: Release
+        self,
+        feature: Feature,
+        release: Release,
+        effective_distro_slug: Optional[str] = None,
     ) -> bool:
         """
         Check whether a feature is compatible with the framework/distro of the
@@ -290,15 +298,24 @@ class V2Resolver:
         A feature is considered compatible when **any** of the following is true:
 
         * ``feature.compatible_with`` is empty (no restriction).
-        * The release's distro slug appears in ``compatible_with``.
-        * The release's distro's ``framework`` slug appears in ``compatible_with``.
+        * The effective distro slug appears in ``compatible_with``.
+        * The effective distro's ``framework`` slug appears in ``compatible_with``.
 
-        When ``compatible_with`` is non-empty but the release has no distro, the
+        The *effective* distro is ``effective_distro_slug`` when provided (e.g.
+        a vendor override's distro), otherwise ``release.distro``.  Passing the
+        effective distro ensures that features are checked against the distro
+        that will actually be used for the build rather than the release's
+        default distro.
+
+        When ``compatible_with`` is non-empty but no distro is resolvable, the
         feature is treated as incompatible and an error is logged.
 
         Args:
             feature: Feature to check.
             release: Release being resolved.
+            effective_distro_slug: Optional override distro slug.  When set
+                this distro is used for the compatibility check instead of
+                ``release.distro``.
 
         Returns:
             True if compatible, False otherwise (also logs a clear error).
@@ -306,15 +323,15 @@ class V2Resolver:
         if not feature.compatible_with:
             return True
 
-        if not release.distro:
+        distro_slug = effective_distro_slug if effective_distro_slug is not None else release.distro
+
+        if not distro_slug:
             self.logger.error(
                 f"Feature '{feature.slug}' has compatible_with={feature.compatible_with} "
                 f"but release '{release.slug}' does not specify a distro – "
                 f"framework/distro compatibility cannot be determined"
             )
             return False
-
-        distro_slug = release.distro
 
         # Accept if the distro slug itself is listed
         if distro_slug in feature.compatible_with:
@@ -510,11 +527,23 @@ class V2Resolver:
                 if first_matching.slug:
                     override_slug = first_matching.slug
 
+        # Determine the effective distro slug early so that feature compatibility
+        # checks use the distro that will actually be built, not the release's
+        # default.  A vendor override's ``distro`` field takes precedence over the
+        # release-level ``distro``.
+        effective_distro: Optional[str] = (
+            active_vendor_override.distro
+            if active_vendor_override and active_vendor_override.distro
+            else release.distro
+        )
+
         # Check compatibility for every requested feature
         for feature in features:
             if not self.check_feature_compatibility(feature, device):
                 sys.exit(1)
-            if not self.check_feature_framework_compatibility(feature, release):
+            if not self.check_feature_framework_compatibility(
+                feature, release, effective_distro_slug=effective_distro
+            ):
                 sys.exit(1)
 
         # Resolve named environment for the release
@@ -545,14 +574,6 @@ class V2Resolver:
                     f"(referenced by {source})"
                 )
                 sys.exit(1)
-
-        # Determine the effective distro slug: vendor override's distro takes
-        # precedence over the release-level distro.
-        effective_distro: Optional[str] = (
-            active_vendor_override.distro
-            if active_vendor_override and active_vendor_override.distro
-            else release.distro
-        )
 
         # Build ordered KAS file list
         # Order: framework.includes -> distro.includes (effective distro)
@@ -628,6 +649,7 @@ class V2Resolver:
             local_conf=local_conf,
             env=env,
             copy=merged_copy,
+            effective_distro=effective_distro,
         )
 
     def _compose_build_path(self, resolved: ResolvedConfig) -> str:
@@ -637,7 +659,7 @@ class V2Resolver:
         The path is built as ``build/<parts>`` where *parts* is a
         dash-separated sequence of:
 
-        1. Distro slug (from ``release.distro``), if set
+        1. Effective distro slug (vendor override's distro or ``release.distro``), if set
         2. Device slug
         3. Release slug
         4. Feature slugs (in order), if any
@@ -649,8 +671,9 @@ class V2Resolver:
             Auto-composed path string (e.g. ``build/poky-qemuarm64-scarthgap``).
         """
         parts: List[str] = []
-        if resolved.release.distro:
-            parts.append(resolved.release.distro)
+        distro_for_path = resolved.effective_distro or resolved.release.distro
+        if distro_for_path:
+            parts.append(distro_for_path)
         parts.append(resolved.device.slug)
         parts.append(resolved.release.slug)
         for feature in resolved.features:

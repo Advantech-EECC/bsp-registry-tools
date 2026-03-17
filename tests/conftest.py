@@ -978,18 +978,32 @@ containers:
     file: null
     args: []
 registry:
+  frameworks:
+    - slug: yocto
+      description: "Yocto Project build system"
+      vendor: "Yocto Project"
+      includes:
+        - kas/yocto/yocto.yaml
   distro:
     - slug: poky
       description: "Poky (Yocto Project reference distro)"
       vendor: yocto
+      framework: yocto
       includes:
         - kas/poky/distro/poky.yaml
     - slug: poky-imx
       description: "Poky with i.MX BSP layers"
       vendor: nxp
+      framework: yocto
       includes:
         - kas/poky/distro/poky.yaml
         - kas/poky/distro/poky-imx.yaml
+    - slug: fsl-imx-xwayland
+      description: "Freescale i.MX X Wayland (Yocto Project reference distro)"
+      vendor: nxp
+      framework: yocto
+      includes:
+        - vendors/nxp/distro/fsl-imx-xwayland.yaml
   devices:
     - slug: adv-imx8
       description: "Advantech i.MX8 Board"
@@ -1026,10 +1040,25 @@ registry:
           vendor: advantech-europe
           includes:
             - kas/yocto/vendors/advantech-europe/nxp/imx-6.6.36-2.1.0-scarthgap.yaml
+        - slug: imx-xwayland-6.6.52
+          vendor: advantech-europe
+          distro: fsl-imx-xwayland
+          includes:
+            - kas/yocto/vendors/advantech-europe/nxp/imx-xwayland-6.6.52-scarthgap.yaml
         - vendor: advantech
           includes:
             - kas/yocto/vendors/advantech/nxp/scarthgap.yaml
-  features: []
+  features:
+    - slug: xwayland-only
+      description: "Feature only for fsl-imx-xwayland distro"
+      compatible_with: [fsl-imx-xwayland]
+      includes:
+        - kas/features/xwayland-only.yaml
+    - slug: yocto-only
+      description: "Feature compatible with any Yocto-based distro"
+      compatible_with: [yocto]
+      includes:
+        - kas/features/yocto-only.yaml
   bsp:
     - name: adv-imx8-europe-scarthgap-imx-6.6.23
       description: "Advantech Europe i.MX8 Scarthgap (imx-6.6.23)"
@@ -1049,6 +1078,14 @@ registry:
       build:
         container: "debian-bookworm"
         path: build/adv-imx8-europe-scarthgap-imx-6.6.36
+    - name: adv-imx8-europe-scarthgap-xwayland
+      description: "Advantech Europe i.MX8 Scarthgap (fsl-imx-xwayland distro)"
+      device: adv-imx8-europe
+      release: scarthgap
+      override: imx-xwayland-6.6.52
+      features: []
+      build:
+        container: "debian-bookworm"
     - name: adv-imx8-scarthgap
       description: "Advantech i.MX8 Scarthgap (no override)"
       device: adv-imx8

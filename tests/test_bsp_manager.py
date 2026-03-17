@@ -1561,6 +1561,138 @@ class TestVendorOverrideSlug:
             "automatically selecting" in msg.lower() for msg in caplog.messages
         )
 
+    def test_override_distro_with_framework_includes_framework_files(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """When override distro has a framework, framework.includes appear in kas_files."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8-europe", "scarthgap", override_slug="imx-xwayland-6.6.52"
+        )
+        # The fsl-imx-xwayland distro has framework: yocto, so yocto framework
+        # includes must be present.
+        assert "kas/yocto/yocto.yaml" in resolved.kas_files
+
+    def test_override_distro_with_framework_includes_distro_files(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """When override distro has a framework, the distro's own includes are also present."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8-europe", "scarthgap", override_slug="imx-xwayland-6.6.52"
+        )
+        assert "vendors/nxp/distro/fsl-imx-xwayland.yaml" in resolved.kas_files
+
+    def test_override_distro_with_framework_replaces_release_distro(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """When override distro is active, release's default distro includes are NOT used."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8-europe", "scarthgap", override_slug="imx-xwayland-6.6.52"
+        )
+        # The release normally uses 'poky', which would include kas/poky/distro/poky.yaml.
+        # With the fsl-imx-xwayland override distro, poky.yaml should NOT appear (only
+        # the overridden distro's files and the shared yocto framework include appear).
+        assert "kas/poky/distro/poky.yaml" not in resolved.kas_files
+
+    def test_override_distro_framework_includes_file_order(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """Framework includes precede distro includes in the kas_files list."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8-europe", "scarthgap", override_slug="imx-xwayland-6.6.52"
+        )
+        kas = resolved.kas_files
+        idx_framework = kas.index("kas/yocto/yocto.yaml")
+        idx_distro = kas.index("vendors/nxp/distro/fsl-imx-xwayland.yaml")
+        assert idx_framework < idx_distro
+
+    def test_feature_compatibility_uses_effective_distro(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """Feature compatible_with is checked against the effective (override) distro slug."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        # 'xwayland-only' feature is compatible_with: [fsl-imx-xwayland].
+        # The release default distro is 'poky', but the override sets 'fsl-imx-xwayland'.
+        # The feature should be accepted (not cause SystemExit) when the override is active.
+        resolved = manager.resolver.resolve(
+            "adv-imx8-europe", "scarthgap",
+            feature_slugs=["xwayland-only"],
+            override_slug="imx-xwayland-6.6.52",
+        )
+        assert "kas/features/xwayland-only.yaml" in resolved.kas_files
+
+    def test_feature_compatibility_fails_when_effective_distro_mismatches(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """Feature restricted to a specific distro fails when the effective distro differs."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        # 'xwayland-only' is compatible_with: [fsl-imx-xwayland].
+        # Without an override, the effective distro is 'poky', so it must be rejected.
+        with pytest.raises(SystemExit):
+            manager.resolver.resolve(
+                "adv-imx8-europe", "scarthgap",
+                feature_slugs=["xwayland-only"],
+                override_slug="imx-6.6.23-2.0.0",
+            )
+
+    def test_yocto_framework_feature_accepted_with_override_distro_having_yocto_framework(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """Feature compatible_with: [yocto] is accepted when the effective distro uses yocto framework."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        # fsl-imx-xwayland has framework: yocto, so 'yocto-only' feature should be accepted.
+        resolved = manager.resolver.resolve(
+            "adv-imx8-europe", "scarthgap",
+            feature_slugs=["yocto-only"],
+            override_slug="imx-xwayland-6.6.52",
+        )
+        assert "kas/features/yocto-only.yaml" in resolved.kas_files
+
+    def test_effective_distro_stored_in_resolved_config(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """ResolvedConfig.effective_distro reflects the override distro when active."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve(
+            "adv-imx8-europe", "scarthgap", override_slug="imx-xwayland-6.6.52"
+        )
+        assert resolved.effective_distro == "fsl-imx-xwayland"
+
+    def test_effective_distro_falls_back_to_release_distro(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """ResolvedConfig.effective_distro equals release.distro when no override distro is set."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        # imx-6.6.36-2.1.0 override has no distro field
+        resolved = manager.resolver.resolve(
+            "adv-imx8-europe", "scarthgap", override_slug="imx-6.6.36-2.1.0"
+        )
+        assert resolved.effective_distro == "poky"
+
+    def test_build_path_uses_effective_distro_when_override_distro_set(
+        self, registry_with_vendor_override_slug_file
+    ):
+        """Auto-composed build path uses the override distro slug, not the release distro."""
+        manager = BspManager(config_path=str(registry_with_vendor_override_slug_file))
+        manager.initialize()
+        # adv-imx8-europe-scarthgap-xwayland preset has no explicit path, so the path
+        # is auto-composed. The effective distro is 'fsl-imx-xwayland'.
+        resolved, _ = manager.resolver.resolve_preset("adv-imx8-europe-scarthgap-xwayland")
+        assert "fsl-imx-xwayland" in resolved.build_path
+        assert "poky" not in resolved.build_path
+
 
 class TestRegistryVendors:
     """Tests for registry.vendors top-level vendor definitions and their includes."""
