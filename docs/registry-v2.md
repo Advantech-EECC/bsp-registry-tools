@@ -557,7 +557,9 @@ releases:
 
 Sub-releases let a single top-level release (e.g. `scarthgap`) expose multiple
 BSP / kernel versions for the same vendor.  The preset's `vendor_release` field
-selects which sub-release to activate.
+selects which sub-release to activate.  When `vendor_release` is **omitted** and
+the active `vendor_overrides` entry has a non-empty `releases` list, the resolver
+automatically selects the **first** sub-release as the default.
 
 If the parent `vendor_overrides` entry has a `distro` field, that distro is used
 as the effective distro for the build whenever any sub-release is selected via
@@ -651,11 +653,13 @@ the resolver:
 
 1. Finds the **first** `vendor_overrides` entry whose `vendor` matches the device's vendor.
 2. Applies that entry's includes (and its `distro` override, if present).
-3. Emits a **WARNING** advising you to add an explicit `override:` or `vendor_release:`
+3. If the selected `vendor_overrides` entry has a non-empty `releases` list, automatically
+   selects the **first** sub-release and applies its includes.
+4. Emits a **WARNING** advising you to add an explicit `override:` or `vendor_release:`
    to the BSP preset.
 
-This auto-selection ensures you always get usable vendor includes as a default, while
-being notified that an explicit choice is recommended.
+This auto-selection ensures you always get usable vendor includes (and a vendor
+sub-release) as a default, while being notified that an explicit choice is recommended.
 
 ```
 WARNING  Release 'scarthgap' has vendor_overrides defined but no `override` or
@@ -847,7 +851,7 @@ registry:
 | `device`         | string           | Device slug (references `devices[*].slug`)                                      |
 | `release`        | string (opt.)    | Single release slug (mutually exclusive with `releases`)                        |
 | `releases`       | list[str] (opt.) | List of release slugs; expanded into one preset per entry (mutually exclusive with `release`) |
-| `vendor_release` | string (opt.)    | Vendor sub-release slug (references `releases[*].vendor_overrides[*].releases[*].slug`). Selects a specific BSP kernel/firmware version for the device's vendor. |
+| `vendor_release` | string (opt.)    | Vendor sub-release slug (references `releases[*].vendor_overrides[*].releases[*].slug`). Selects a specific BSP kernel/firmware version for the device's vendor. When omitted and the active `vendor_overrides` entry has sub-releases, the **first** sub-release is selected automatically. |
 | `override`       | string (opt.)    | Vendor override slug (references `releases[*].vendor_overrides[*].slug`). Selects a specific `vendor_overrides` entry by its `slug` field, bypassing vendor name matching. Useful when multiple overrides exist for the same vendor, or when the override carries a `distro` substitution. |
 | `features`       | list[str]        | Optional list of feature slugs to enable (references `features[*].slug`)        |
 | `build`          | object (opt.)    | Optional build overrides (container and/or output path)                         |
