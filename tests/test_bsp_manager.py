@@ -1094,13 +1094,16 @@ class TestMultiReleaseBspPreset:
         assert presets["qemu-arm64-scarthgap"].device == "qemu-arm64"
         assert presets["qemu-arm64-styhead"].device == "qemu-arm64"
 
-    def test_expanded_preset_path_is_auto_composed(self, registry_with_multi_release_bsp_file):
-        """Expanded presets ignore the explicit build.path and auto-compose instead."""
+    @pytest.mark.parametrize("release_slug", ["scarthgap", "styhead"])
+    def test_expanded_preset_path_uses_build_path_as_base(
+        self, registry_with_multi_release_bsp_file, release_slug
+    ):
+        """Expanded presets use the explicit build.path as a base with the release slug appended."""
         manager = BspManager(config_path=str(registry_with_multi_release_bsp_file))
         manager.initialize()
-        resolved, _ = manager.resolver.resolve_preset("qemu-arm64-scarthgap")
-        # Auto-composed path: build/{device}-{release} (no distro prefix here)
-        assert resolved.build_path == "build/qemu-arm64-scarthgap"
+        resolved, _ = manager.resolver.resolve_preset(f"qemu-arm64-{release_slug}")
+        # build.path "build/qemu-arm64" + "-" + release_slug → "build/qemu-arm64-{release_slug}"
+        assert resolved.build_path == f"build/qemu-arm64-{release_slug}"
 
     def test_expanded_preset_container_is_preserved(self, registry_with_multi_release_bsp_file):
         """Expanded presets preserve the container override from build.container."""
@@ -1152,6 +1155,17 @@ class TestMultiReleaseBspPreset:
         assert preset.release == "walnascar"
         resolved, _ = manager.resolver.resolve_preset("qemu-x86-64-walnascar")
         assert resolved.build_path == "build/qemu-x86-64-walnascar"
+
+    def test_expanded_preset_path_auto_composed_from_preset_name(
+        self, registry_with_multi_release_no_path_bsp_file
+    ):
+        """Without explicit build.path, path is auto-composed as build/{preset.name}-{release}."""
+        manager = BspManager(config_path=str(registry_with_multi_release_no_path_bsp_file))
+        manager.initialize()
+        resolved_sc, _ = manager.resolver.resolve_preset("qemu-arm64-scarthgap")
+        resolved_st, _ = manager.resolver.resolve_preset("qemu-arm64-styhead")
+        assert resolved_sc.build_path == "build/qemu-arm64-scarthgap"
+        assert resolved_st.build_path == "build/qemu-arm64-styhead"
 
     def test_expand_preset_both_fields_exits(self, tmp_dir):
         """expand_preset() exits when both release and releases are set."""

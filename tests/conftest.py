@@ -771,7 +771,7 @@ registry:
       releases: [scarthgap, styhead]
       build:
         container: "debian-bookworm"
-        path: build/should-be-ignored
+        path: build/qemu-arm64
     # Single-release preset (backward compat)
     - name: qemu-x86-64-walnascar
       description: "QEMU x86-64 Walnascar"
@@ -788,6 +788,53 @@ def registry_with_multi_release_bsp_file(tmp_dir):
     """Create a registry YAML file with a multi-release BSP preset."""
     registry_path = tmp_dir / "bsp-registry.yaml"
     registry_path.write_text(REGISTRY_WITH_MULTI_RELEASE_BSP_YAML)
+    return registry_path
+
+
+REGISTRY_WITH_MULTI_RELEASE_NO_PATH_BSP_YAML = """
+specification:
+  version: "2.0"
+containers:
+  debian-bookworm:
+    image: "test/debian:bookworm"
+    file: null
+    args: []
+registry:
+  devices:
+    - slug: qemu-arm64
+      description: "QEMU ARM64"
+      vendor: qemu
+      soc_vendor: arm
+      includes:
+        - kas/qemu/qemuarm64.yaml
+  releases:
+    - slug: scarthgap
+      description: "Yocto 5.0 LTS"
+      yocto_version: "5.0"
+      includes:
+        - kas/scarthgap.yaml
+    - slug: styhead
+      description: "Yocto 5.1"
+      yocto_version: "5.1"
+      includes:
+        - kas/styhead.yaml
+  features: []
+  bsp:
+    # Multi-release preset without explicit build.path
+    - name: qemu-arm64
+      description: "QEMU ARM64 Yocto"
+      device: qemu-arm64
+      releases: [scarthgap, styhead]
+      build:
+        container: "debian-bookworm"
+"""
+
+
+@pytest.fixture
+def registry_with_multi_release_no_path_bsp_file(tmp_dir):
+    """Create a registry YAML file with a multi-release BSP preset that has no build.path."""
+    registry_path = tmp_dir / "bsp-registry.yaml"
+    registry_path.write_text(REGISTRY_WITH_MULTI_RELEASE_NO_PATH_BSP_YAML)
     return registry_path
 
 

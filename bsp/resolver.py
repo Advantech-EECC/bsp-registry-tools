@@ -706,8 +706,8 @@ class V2Resolver:
           (wrapped in a list).
         * If the preset uses the plural ``releases`` field it is expanded into
           one preset per release slug.  Each expanded preset is named
-          ``{preset.name}-{release_slug}`` and its ``build.path`` is always
-          auto-composed (ignored even if set on the original entry).
+          ``{preset.name}-{release_slug}`` and its ``build.path`` is computed
+          as ``{build.path or "build/{preset.name}"}-{release_slug}[-{override}]``.
 
         Validation:
         * Exactly one of ``release`` / ``releases`` must be set.
@@ -747,15 +747,20 @@ class V2Resolver:
         # Expand multi-release preset
         expanded: List[BspPreset] = []
         for release_slug in preset.releases:
-            # Build section: keep container override but drop explicit path so
-            # it is always auto-composed per-release.
-            if preset.build and preset.build.path:
-                expanded_build = BspBuild(
-                    container=preset.build.container,
-                    path=None,
-                )
-            else:
-                expanded_build = preset.build
+            # Build path for this expanded release.
+            # Base: explicit build.path if provided, else "build/{preset.name}".
+            base_path = (preset.build.path if preset.build and preset.build.path
+                         else f"build/{preset.name}")
+            # Append release slug, then override slug (if set).
+            path_parts = [base_path, release_slug]
+            if preset.override:
+                path_parts.append(preset.override)
+            expanded_path = "-".join(path_parts)
+
+            expanded_build = BspBuild(
+                container=preset.build.container if preset.build else None,
+                path=expanded_path,
+            )
 
             expanded.append(
                 BspPreset(
