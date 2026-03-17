@@ -271,7 +271,6 @@ class TestV2DataClasses:
         )
         assert vo.vendor == "advantech"
         assert vo.includes == ["adv-common.yml"]
-        assert vo.soc_vendors == [] or len(vo.soc_vendors) == 2
         assert len(vo.soc_vendors) == 2
         assert vo.soc_vendors[0].vendor == "nxp"
         assert vo.soc_vendors[1].vendor == "mediatek"
