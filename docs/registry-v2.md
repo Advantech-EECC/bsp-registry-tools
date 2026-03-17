@@ -559,6 +559,11 @@ Sub-releases let a single top-level release (e.g. `scarthgap`) expose multiple
 BSP / kernel versions for the same vendor.  The preset's `vendor_release` field
 selects which sub-release to activate.
 
+If the parent `vendor_overrides` entry has a `distro` field, that distro is used
+as the effective distro for the build whenever any sub-release is selected via
+`vendor_release`.  This means the `distro` override applies for all three
+selection methods: `override`, `vendor_release`, and auto-selection.
+
 ```yaml
 releases:
   - slug: scarthgap
@@ -569,6 +574,7 @@ releases:
       - kas/scarthgap.yaml
     vendor_overrides:
       - vendor: advantech
+        distro: fsl-imx-xwayland        # replaces release.distro for ALL sub-releases
         includes:
           - kas/advantech/scarthgap-common.yaml  # common includes for all Advantech sub-releases
         releases:
@@ -582,18 +588,37 @@ releases:
               - kas/advantech/nxp/imx-6.12.0.yaml
 ```
 
+A preset then selects a sub-release with `vendor_release`:
+
+```yaml
+bsp:
+  - name: my-board-scarthgap
+    device: my-adv-board
+    release: scarthgap
+    vendor_release: imx-6.6.53      # selects the sub-release; distro: fsl-imx-xwayland is used
+    features: [systemd, security]
+```
+
 | Sub-release field | Type      | Description                                          |
 |-------------------|-----------|------------------------------------------------------|
 | `slug`            | string    | Unique sub-release identifier (referenced by `bsp[*].vendor_release`) |
 | `description`     | string    | Human-readable description                           |
 | `includes`        | list[str] | KAS files added when this sub-release is selected    |
 
-#### Slug-based override selection and distro override
+#### Distro override
+
+The `distro` field on a `vendor_overrides` entry replaces the release's own
+`distro` for that build, regardless of which selection method activates the
+override (`override` slug, `vendor_release`, or auto-selection).  This allows a
+specific vendor/BSP combination to be built against a different distro (e.g.
+`fsl-imx-xwayland` instead of `poky`).
+
+#### Slug-based override selection
 
 When multiple `vendor_overrides` entries exist for the same vendor (each with a
 distinct `slug`), a preset can select a specific entry using the `override` field
-instead of relying on vendor name matching.  Additionally, if the selected entry
-has a `distro` field it replaces the release's distro for that build.
+instead of relying on vendor name matching.  If the selected entry has a `distro`
+field it replaces the release's distro for that build.
 
 ```yaml
 releases:
