@@ -1110,13 +1110,13 @@ registry:
 ## CLI Examples
 
 ```bash
-# List all BSP presets
+# List all BSP presets (shows vendor_release and override when set)
 bsp list
 
 # List all devices
 bsp list devices
 
-# List all releases
+# List all releases (shows vendor overrides + sub-releases beneath each entry)
 bsp list releases
 
 # List all features (with compatibility info)
@@ -1148,5 +1148,111 @@ bsp shell --device qemuarm64 --release scarthgap
 
 # Run a single command in the shell
 bsp shell imx8mp-adv-scarthgap --command "bitbake core-image-minimal"
+
+# Display registry hierarchy (default detail level)
+bsp tree
+
+# Display compact tree (names/slugs only, no sub-items)
+bsp tree --compact
+
+# Display full tree (nested vendor overrides, vendor releases, and KAS includes)
+bsp tree --full
+```
+
+---
+
+## `bsp tree` command
+
+The `bsp tree` command prints an ASCII tree of the full BSP registry hierarchy
+organized into sections: Frameworks, Distros, Releases, Devices, Features, and
+BSP Presets.
+
+### Display modes
+
+Three mutually-exclusive display levels are available via `--full` / `--compact`
+flags. `--full` and `--compact` cannot be combined.
+
+| Flag        | Behaviour                                                                                        |
+|-------------|--------------------------------------------------------------------------------------------------|
+| _(default)_ | Standard detail: vendor overrides shown inline with release slugs and distro override per entry  |
+| `--compact` | Names/slugs only — no sub-items for any section. Useful for a quick registry inventory.          |
+| `--full`    | Fully nested sub-tree: vendor overrides → vendor releases → KAS includes lists for every item.   |
+
+### Default output example
+
+```
+BSP Registry
+├── Releases (1)
+│   └── scarthgap: Yocto 5.0 LTS [Yocto 5.0]
+│       ├── distro: poky
+│       └── vendor override: advantech, distro: fsl-imx-xwayland, releases: imx-6.6.53, imx-6.12.0
+├── Devices (1)
+│   └── adv-imx8: Advantech i.MX8 Board (vendor: advantech, soc_vendor: nxp)
+└── BSP Presets (1)
+    └── adv-imx8-scarthgap: Advantech i.MX8 Scarthgap
+        ├── device: adv-imx8  release: scarthgap
+        └── vendor release: imx-6.6.53
+```
+
+### `--full` output example
+
+```
+BSP Registry
+├── Releases (1)
+│   └── scarthgap: Yocto 5.0 LTS [Yocto 5.0]
+│       ├── distro: poky
+│       ├── includes: kas/poky/scarthgap.yaml
+│       └── vendor override: advantech (distro: fsl-imx-xwayland)
+│           ├── includes: kas/yocto/vendors/advantech/scarthgap.yaml
+│           ├── vendor release: imx-6.6.53: Scarthgap for i.MX 6.6.53
+│           │   └── includes: kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml
+│           └── vendor release: imx-6.12.0: Scarthgap for i.MX 6.12.0
+│               └── includes: kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml
+...
+```
+
+### `--compact` output example
+
+```
+BSP Registry
+├── Releases (1)
+│   └── scarthgap: Yocto 5.0 LTS
+├── Devices (1)
+│   └── adv-imx8: Advantech i.MX8 Board
+└── BSP Presets (1)
+    └── adv-imx8-scarthgap: Advantech i.MX8 Scarthgap
+```
+
+---
+
+## `bsp list releases` command
+
+`bsp list releases` lists all release definitions. Vendor overrides and their
+sub-releases are now printed beneath the corresponding release entry so you can
+see the full override tree without opening the registry file.
+
+Example output for a release that has vendor overrides:
+
+```
+Available releases:
+- scarthgap: Yocto 5.0 LTS (Scarthgap) [Yocto 5.0]
+    override [vendor: advantech, distro: fsl-imx-xwayland]
+      release: imx-6.6.53 — Scarthgap for i.MX 6.6.53
+      release: imx-6.12.0 — Scarthgap for i.MX 6.12.0
+```
+
+Use `bsp list releases --device <slug>` to filter releases to those compatible
+with a specific device's vendor.
+
+---
+
+## `bsp list` (presets) command
+
+`bsp list` now includes `vendor_release` and `override` fields in the summary
+line when they are set on the preset:
+
+```
+Available BSP presets:
+- adv-imx8-scarthgap: Advantech i.MX8 Scarthgap (device: adv-imx8, release: scarthgap, vendor_release: imx-6.6.53)
 ```
 
