@@ -391,6 +391,11 @@ class V2Resolver:
             for vo in vendor_overrides:
                 if vo.slug == override_slug:
                     result.extend(vo.includes)
+                    if vendor_release_slug:
+                        for vr in vo.releases:
+                            if vr.slug == vendor_release_slug:
+                                result.extend(vr.includes)
+                                break
                     break
         else:
             for vo in vendor_overrides:
@@ -529,6 +534,16 @@ class V2Resolver:
                 # so it selects this specific entry rather than the first vendor match.
                 if first_matching.slug:
                     override_slug = first_matching.slug
+
+        # If the active vendor override has releases but no vendor_release_slug was
+        # specified explicitly, default to the first available vendor release.
+        if active_vendor_override and active_vendor_override.releases and not vendor_release_slug:
+            vendor_release_slug = active_vendor_override.releases[0].slug
+            self.logger.debug(
+                f"No vendor_release specified; defaulting to first vendor release "
+                f"'{vendor_release_slug}' from override for vendor "
+                f"'{active_vendor_override.vendor}'."
+            )
 
         # Determine the effective distro slug early so that feature compatibility
         # checks use the distro that will actually be built, not the release's

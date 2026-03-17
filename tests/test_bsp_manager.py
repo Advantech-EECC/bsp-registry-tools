@@ -1270,14 +1270,16 @@ class TestVendorOverrides:
         )
         assert "kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml" not in resolved.kas_files
 
-    def test_vendor_release_not_added_when_omitted(
+    def test_vendor_release_defaults_to_first_when_omitted(
         self, registry_with_vendor_overrides_file
     ):
-        """When no vendor_release_slug is given, sub-release includes are not added."""
+        """When no vendor_release_slug is given, the first vendor release is selected by default."""
         manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
         manager.initialize()
         resolved = manager.resolver.resolve("adv-imx8", "scarthgap")
-        assert "kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml" not in resolved.kas_files
+        # First vendor release (imx-6.6.53) should be auto-selected
+        assert "kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml" in resolved.kas_files
+        # Second vendor release should NOT be selected
         assert "kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml" not in resolved.kas_files
 
     def test_vendor_overrides_kas_files_order(self, registry_with_vendor_overrides_file):
