@@ -254,6 +254,13 @@ class BspManager:
                 print(vo_line)
                 for vr in vo.releases:
                     print("  " + _dim(f"    release: {vr.slug} — {vr.description}"))
+                for svo in vo.soc_vendors:
+                    svo_parts = [f"soc_vendor: {svo.vendor}"]
+                    if svo.distro:
+                        svo_parts.append(f"distro: {svo.distro}")
+                    print("  " + _dim(f"    [{', '.join(svo_parts)}]"))
+                    for vr in svo.releases:
+                        print("  " + _dim(f"      release: {vr.slug} — {vr.description}"))
 
     def list_features(self, use_color: bool = True) -> None:
         """
@@ -527,16 +534,46 @@ class BspManager:
                                 vo_sub.append(_dim(f"includes: {', '.join(vo.includes)}"))
                             _print_sub_lines(vo_sub, vo_prefix)
 
-                            # Vendor releases
-                            for vr_idx, vr in enumerate(vo.releases):
-                                is_last_vr = vr_idx == len(vo.releases) - 1
-                                vr_conn   = LAST if is_last_vr else BRANCH
-                                vr_prefix = vo_prefix + (BLANK if is_last_vr else PIPE)
-                                print(
-                                    f"{vo_prefix}{vr_conn}"
-                                    f"{_dim('vendor release: ')}{_slug(vr.slug)}: {vr.description}"
-                                )
-                                _print_includes(vr.includes, vr_prefix)
+                            # SoC vendor entries (if present), else flat vendor releases
+                            if vo.soc_vendors:
+                                for svo_idx, svo in enumerate(vo.soc_vendors):
+                                    is_last_svo = svo_idx == len(vo.soc_vendors) - 1
+                                    svo_conn   = LAST if is_last_svo else BRANCH
+                                    svo_prefix = vo_prefix + (BLANK if is_last_svo else PIPE)
+
+                                    svo_tag_str = _dim(f" (distro: {svo.distro})") if svo.distro else ""
+                                    print(
+                                        f"{vo_prefix}{svo_conn}"
+                                        f"{_dim('soc vendor: ')}{_slug(svo.vendor)}{svo_tag_str}"
+                                    )
+
+                                    # SoC vendor includes
+                                    svo_sub = []
+                                    if svo.includes:
+                                        svo_sub.append(_dim(f"includes: {', '.join(svo.includes)}"))
+                                    _print_sub_lines(svo_sub, svo_prefix)
+
+                                    # SoC vendor releases
+                                    for vr_idx, vr in enumerate(svo.releases):
+                                        is_last_vr = vr_idx == len(svo.releases) - 1
+                                        vr_conn   = LAST if is_last_vr else BRANCH
+                                        vr_prefix = svo_prefix + (BLANK if is_last_vr else PIPE)
+                                        print(
+                                            f"{svo_prefix}{vr_conn}"
+                                            f"{_dim('vendor release: ')}{_slug(vr.slug)}: {vr.description}"
+                                        )
+                                        _print_includes(vr.includes, vr_prefix)
+                            else:
+                                # Vendor releases
+                                for vr_idx, vr in enumerate(vo.releases):
+                                    is_last_vr = vr_idx == len(vo.releases) - 1
+                                    vr_conn   = LAST if is_last_vr else BRANCH
+                                    vr_prefix = vo_prefix + (BLANK if is_last_vr else PIPE)
+                                    print(
+                                        f"{vo_prefix}{vr_conn}"
+                                        f"{_dim('vendor release: ')}{_slug(vr.slug)}: {vr.description}"
+                                    )
+                                    _print_includes(vr.includes, vr_prefix)
                     else:
                         # default mode: flat sub-lines showing distro + vendor overrides
                         sub_items = []
@@ -548,9 +585,21 @@ class BspManager:
                                 vo_parts.append(f"slug: {vo.slug}")
                             if vo.distro:
                                 vo_parts.append(f"distro: {vo.distro}")
-                            vr_names = [vr.slug for vr in vo.releases]
-                            if vr_names:
-                                vo_parts.append(f"releases: {', '.join(vr_names)}")
+                            if vo.soc_vendors:
+                                svo_strs = []
+                                for svo in vo.soc_vendors:
+                                    svo_p = [svo.vendor]
+                                    if svo.distro:
+                                        svo_p.append(f"distro: {svo.distro}")
+                                    svo_vr_names = [vr.slug for vr in svo.releases]
+                                    if svo_vr_names:
+                                        svo_p.append(f"releases: {', '.join(svo_vr_names)}")
+                                    svo_strs.append(f"[{'; '.join(svo_p)}]")
+                                vo_parts.append(f"soc vendors: {', '.join(svo_strs)}")
+                            else:
+                                vr_names = [vr.slug for vr in vo.releases]
+                                if vr_names:
+                                    vo_parts.append(f"releases: {', '.join(vr_names)}")
                             sub_items.append(_dim(", ".join(vo_parts)))
                         _print_sub_lines(sub_items, item_prefix)
 

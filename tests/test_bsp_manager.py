@@ -1427,6 +1427,34 @@ class TestVendorOverrides:
         captured = capsys.readouterr()
         assert "fsl-imx-xwayland" in captured.out
 
+    def test_list_releases_shows_soc_vendors(self, registry_with_soc_vendor_overrides_file, capsys):
+        """list_releases shows soc_vendor entries under each vendor override."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        manager.list_releases(use_color=False)
+        captured = capsys.readouterr()
+        assert "soc_vendor: nxp" in captured.out
+        assert "soc_vendor: mediatek" in captured.out
+
+    def test_list_releases_shows_soc_vendor_releases(self, registry_with_soc_vendor_overrides_file, capsys):
+        """list_releases shows sub-releases inside each soc_vendor entry."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        manager.list_releases(use_color=False)
+        captured = capsys.readouterr()
+        assert "imx-6.6.53" in captured.out
+        assert "imx-6.12.0" in captured.out
+        assert "mt8186-2.0" in captured.out
+
+    def test_list_releases_shows_soc_vendor_distro(self, registry_with_soc_vendor_overrides_file, capsys):
+        """list_releases shows the distro of each soc_vendor entry."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        manager.list_releases(use_color=False)
+        captured = capsys.readouterr()
+        assert "fsl-imx-xwayland" in captured.out
+        assert "mt-distro" in captured.out
+
     def test_vendor_overrides_loaded_from_yaml(self, registry_with_vendor_overrides_file):
         """vendor_overrides and their sub-releases are correctly parsed from YAML."""
         manager = BspManager(config_path=str(registry_with_vendor_overrides_file))
@@ -2268,3 +2296,73 @@ class TestSocVendorOverrides:
         resolved, _preset = manager.resolver.resolve_preset("adv-mt8186-scarthgap-mt8186-2.0")
         assert "kas/yocto/vendors/advantech/mediatek/mt8186-2.0.yaml" in resolved.kas_files
         assert resolved.effective_distro == "mt-distro"
+
+    def test_tree_default_mode_shows_soc_vendors(
+        self, registry_with_soc_vendor_overrides_file, capsys
+    ):
+        """tree default mode shows soc_vendors info inline under vendor override."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="default")
+        captured = capsys.readouterr()
+        assert "soc vendors" in captured.out
+        assert "nxp" in captured.out
+        assert "mediatek" in captured.out
+
+    def test_tree_default_mode_shows_soc_vendor_releases(
+        self, registry_with_soc_vendor_overrides_file, capsys
+    ):
+        """tree default mode shows sub-release slugs inside each soc_vendor entry."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="default")
+        captured = capsys.readouterr()
+        assert "imx-6.6.53" in captured.out
+        assert "mt8186-2.0" in captured.out
+
+    def test_tree_full_mode_shows_soc_vendors(
+        self, registry_with_soc_vendor_overrides_file, capsys
+    ):
+        """tree full mode shows soc vendor entries as nested tree nodes."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="full")
+        captured = capsys.readouterr()
+        assert "soc vendor:" in captured.out
+        assert "nxp" in captured.out
+        assert "mediatek" in captured.out
+
+    def test_tree_full_mode_shows_soc_vendor_releases(
+        self, registry_with_soc_vendor_overrides_file, capsys
+    ):
+        """tree full mode shows vendor releases nested under each soc vendor."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="full")
+        captured = capsys.readouterr()
+        assert "vendor release:" in captured.out
+        assert "imx-6.6.53" in captured.out
+        assert "imx-6.12.0" in captured.out
+        assert "mt8186-2.0" in captured.out
+
+    def test_tree_full_mode_shows_soc_vendor_distro(
+        self, registry_with_soc_vendor_overrides_file, capsys
+    ):
+        """tree full mode shows the distro of each soc_vendor entry."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="full")
+        captured = capsys.readouterr()
+        assert "fsl-imx-xwayland" in captured.out
+        assert "mt-distro" in captured.out
+
+    def test_tree_full_mode_shows_soc_vendor_includes(
+        self, registry_with_soc_vendor_overrides_file, capsys
+    ):
+        """tree full mode shows KAS includes of each soc_vendor entry."""
+        manager = BspManager(config_path=str(registry_with_soc_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="full")
+        captured = capsys.readouterr()
+        assert "kas/yocto/vendors/advantech/nxp/scarthgap.yaml" in captured.out
+        assert "kas/yocto/vendors/advantech/mediatek/scarthgap.yaml" in captured.out

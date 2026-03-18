@@ -1326,6 +1326,8 @@ flags. `--full` and `--compact` cannot be combined.
 
 ### Default output example
 
+When a `vendor_overrides` entry uses **flat releases** (no `soc_vendors`):
+
 ```
 BSP Registry
 ├── Releases (1)
@@ -1340,7 +1342,56 @@ BSP Registry
         └── vendor release: imx-6.6.53
 ```
 
+When a `vendor_overrides` entry uses **`soc_vendors`**, each SoC vendor's name,
+optional distro, and sub-releases are shown inline:
+
+```
+BSP Registry
+├── Releases (1)
+│   └── scarthgap: Yocto 5.0 LTS [Yocto 5.0]
+│       ├── distro: poky
+│       └── vendor override: advantech, soc vendors: [nxp; distro: fsl-imx-xwayland; releases: imx-6.6.53, imx-6.12.0], [mediatek; distro: mt-distro; releases: mt8186-2.0]
+├── Devices (2)
+│   ├── adv-imx8: Advantech i.MX8 Board (vendor: advantech, soc_vendor: nxp)
+│   └── adv-mt8186: Advantech MT8186 Board (vendor: advantech, soc_vendor: mediatek)
+└── BSP Presets (2)
+    ├── adv-imx8-scarthgap: Advantech i.MX8 Scarthgap
+    │   ├── device: adv-imx8  release: scarthgap
+    │   └── vendor release: imx-6.6.53
+    └── adv-mt8186-scarthgap: Advantech MT8186 Scarthgap
+        ├── device: adv-mt8186  release: scarthgap
+        └── vendor release: mt8186-2.0
+```
+
 ### `--full` output example
+
+When `soc_vendors` is used, each SoC vendor entry is rendered as a nested
+subtree beneath the parent vendor override, with its own includes and
+vendor releases:
+
+```
+BSP Registry
+├── Releases (1)
+│   └── scarthgap: Yocto 5.0 LTS [Yocto 5.0]
+│       ├── distro: poky
+│       ├── includes: kas/poky/scarthgap.yaml
+│       └── vendor override: advantech
+│           └── includes: kas/yocto/vendors/advantech/scarthgap.yaml
+│           ├── soc vendor: nxp (distro: fsl-imx-xwayland)
+│           │   └── includes: kas/yocto/vendors/advantech/nxp/scarthgap.yaml
+│           │   ├── vendor release: imx-6.6.53: Scarthgap for i.MX 6.6.53
+│           │   │   └── includes: kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml
+│           │   └── vendor release: imx-6.12.0: Scarthgap for i.MX 6.12.0
+│           │       └── includes: kas/yocto/vendors/advantech/nxp/imx-6.12.0.yaml
+│           └── soc vendor: mediatek (distro: mt-distro)
+│               └── includes: kas/yocto/vendors/advantech/mediatek/scarthgap.yaml
+│               └── vendor release: mt8186-2.0: Scarthgap for MT8186 v2.0
+│                   └── includes: kas/yocto/vendors/advantech/mediatek/mt8186-2.0.yaml
+...
+```
+
+Without `soc_vendors` (flat releases), vendor releases appear directly
+under the vendor override (unchanged behavior):
 
 ```
 BSP Registry
@@ -1377,7 +1428,7 @@ BSP Registry
 sub-releases are now printed beneath the corresponding release entry so you can
 see the full override tree without opening the registry file.
 
-Example output for a release that has vendor overrides:
+Example output for a release that uses **flat vendor sub-releases**:
 
 ```
 Available releases:
@@ -1385,6 +1436,19 @@ Available releases:
     override [vendor: advantech, distro: fsl-imx-xwayland]
       release: imx-6.6.53 — Scarthgap for i.MX 6.6.53
       release: imx-6.12.0 — Scarthgap for i.MX 6.12.0
+```
+
+Example output when the vendor override uses **`soc_vendors`** instead:
+
+```
+Available releases:
+- scarthgap: Yocto 5.0 LTS (Scarthgap) [Yocto 5.0], distro: poky
+    override [vendor: advantech]
+      [soc_vendor: nxp, distro: fsl-imx-xwayland]
+        release: imx-6.6.53 — Scarthgap for i.MX 6.6.53
+        release: imx-6.12.0 — Scarthgap for i.MX 6.12.0
+      [soc_vendor: mediatek, distro: mt-distro]
+        release: mt8186-2.0 — Scarthgap for MT8186 v2.0
 ```
 
 Use `bsp list releases --device <slug>` to filter releases to those compatible
