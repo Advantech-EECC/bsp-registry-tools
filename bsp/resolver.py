@@ -718,13 +718,15 @@ class V2Resolver:
         # Copy entries merged in order (lowest to highest priority):
         #   1. Global registry-level copy (applies to every build)
         #   2. Named environment copy (applies when this env is active)
-        #   3. Device-level copy (prefer device.copy; fall back to legacy device.build.copy)
+        #   3. Container-level copy (from the active container, if any)
+        #   4. Device-level copy (prefer device.copy; fall back to legacy device.build.copy)
         global_copy = list(self.model.environment.copy) if self.model.environment and self.model.environment.copy else []
         named_env_copy = list(named_env.copy) if named_env and named_env.copy else []
+        container_copy = list(container.copy) if container and container.copy else []
         device_copy = device.copy if device.copy else (
             device.build.copy if device.build else []
         )
-        merged_copy = global_copy + named_env_copy + list(device_copy)
+        merged_copy = global_copy + named_env_copy + container_copy + list(device_copy)
 
         return ResolvedConfig(
             device=device,
@@ -916,7 +918,24 @@ class V2Resolver:
             if preset_build.container:
                 container_name = preset_build.container
                 if container_name in self.containers:
-                    resolved.container = self.containers[container_name]
+                    new_container = self.containers[container_name]
+                    resolved.container = new_container
+                    # Rebuild the copy list: the container has changed so the
+                    # container-level copy entries must be updated to reflect
+                    # the overriding container.
+                    named_env = self.get_named_environment(resolved.release)
+                    global_copy = (
+                        list(self.model.environment.copy)
+                        if self.model.environment and self.model.environment.copy
+                        else []
+                    )
+                    named_env_copy = list(named_env.copy) if named_env and named_env.copy else []
+                    container_copy = list(new_container.copy) if new_container.copy else []
+                    device = resolved.device
+                    device_copy = device.copy if device.copy else (
+                        device.build.copy if device.build else []
+                    )
+                    resolved.copy = global_copy + named_env_copy + container_copy + list(device_copy)
                 else:
                     self.logger.error(
                         f"Container '{container_name}' not found in registry "

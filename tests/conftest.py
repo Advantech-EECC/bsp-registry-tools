@@ -1360,3 +1360,77 @@ def registry_with_preset_container_override_and_named_env_copy_file(tmp_dir):
         REGISTRY_WITH_PRESET_CONTAINER_OVERRIDE_AND_NAMED_ENV_COPY_YAML
     )
     return registry_path
+
+
+REGISTRY_WITH_CONTAINER_COPY_YAML = """
+specification:
+  version: "2.0"
+
+environments:
+  default:
+    container: "isar-debian-13"
+    variables: []
+
+containers:
+  isar-debian-13:
+    image: "test/isar-debian-13:latest"
+    file: null
+    args: []
+    privileged: true
+    copy:
+      - isar/scripts/isar-runqemu.sh: build/
+
+  plain-container:
+    image: "test/plain:latest"
+    file: null
+    args: []
+
+registry:
+  devices:
+    - slug: isar-qemu
+      description: "Isar QEMU"
+      vendor: qemu
+      soc_vendor: arm
+      includes:
+        - kas/isar/qemu.yaml
+    - slug: plain-device
+      description: "Plain device"
+      vendor: test
+      soc_vendor: arm
+      includes:
+        - kas/plain.yaml
+  releases:
+    - slug: isar-v0.11
+      description: "Isar v0.11"
+      includes:
+        - kas/isar/v0.11.yaml
+    - slug: plain-release
+      description: "Plain release"
+      includes:
+        - kas/plain.yaml
+  features: []
+  bsp:
+    - name: isar-qemu-v0.11
+      description: "Isar QEMU v0.11"
+      device: isar-qemu
+      release: isar-v0.11
+      features: []
+      build:
+        path: build/isar-qemu
+    - name: plain-build
+      description: "Plain build (no container copy)"
+      device: plain-device
+      release: plain-release
+      features: []
+      build:
+        container: "plain-container"
+        path: build/plain
+"""
+
+
+@pytest.fixture
+def registry_with_container_copy_file(tmp_dir):
+    """Create a registry YAML with a copy field on a container definition."""
+    registry_path = tmp_dir / "bsp-registry.yaml"
+    registry_path.write_text(REGISTRY_WITH_CONTAINER_COPY_YAML)
+    return registry_path

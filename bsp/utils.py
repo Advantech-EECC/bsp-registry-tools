@@ -99,7 +99,8 @@ def convert_containers_list_to_dict(containers_list: List[Dict[str, Any]]) -> Di
                     args=[DockerArg(name=arg['name'], value=arg['value'])
                           for arg in container_config.get('args', [])],
                     runtime_args=container_config.get('runtime_args'),
-                    privileged=container_config.get('privileged', False)
+                    privileged=container_config.get('privileged', False),
+                    copy=container_config.get('copy', []),
                 )
             else:
                 logging.warning(f"Invalid container configuration for {container_name}, skipping")

@@ -64,12 +64,18 @@ class Docker:
                       --device=/dev/net/tun --cap-add=NET_ADMIN``).
                       Passed to kas-container via ``KAS_CONTAINER_ARGS``.
         privileged: Run container in privileged mode (enables --isar for kas-container)
+        copy: List of ``{source: destination}`` file-copy entries executed
+              before every build that uses this container.  Both paths are
+              resolved relative to the registry file's parent directory.
+              Entries are merged between named-environment copy and
+              device-level copy entries.
     """
     image: Optional[str]
     file: Optional[str]
     args: List[DockerArg] = field(default_factory=empty_list)
     runtime_args: Optional[str] = None
     privileged: bool = False
+    copy: List[Dict[str, str]] = field(default_factory=empty_list)
 
 
 @dataclass

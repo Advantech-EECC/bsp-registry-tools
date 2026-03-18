@@ -2516,3 +2516,196 @@ class TestPresetContainerOverrideWithNamedEnvCopy:
             "named-env copy entries must be executed even when the preset "
             "overrides the environment's container via build.container."
         )
+
+
+# =============================================================================
+# Tests for container-level copy field (Docker.copy)
+# =============================================================================
+
+class TestContainerCopy:
+    """Verify that copy entries placed on a container definition are honoured."""
+
+    def test_container_copy_field_parsed(self, registry_with_container_copy_file):
+        """copy field on a container definition is parsed from YAML."""
+        manager = BspManager(config_path=str(registry_with_container_copy_file))
+        manager.initialize()
+        container = manager.containers["isar-debian-13"]
+        assert len(container.copy) == 1
+        assert container.copy[0] == {"isar/scripts/isar-runqemu.sh": "build/"}
+
+    def test_container_without_copy_has_empty_copy(self, registry_with_container_copy_file):
+        """A container with no copy field defaults to an empty list."""
+        manager = BspManager(config_path=str(registry_with_container_copy_file))
+        manager.initialize()
+        container = manager.containers["plain-container"]
+        assert container.copy == []
+
+    def test_container_copy_propagated_to_resolved(self, registry_with_container_copy_file):
+        """Container copy entries appear in ResolvedConfig.copy when that container is active."""
+        manager = BspManager(config_path=str(registry_with_container_copy_file))
+        manager.initialize()
+        # isar-qemu uses the 'default' env which references isar-debian-13
+        resolved = manager.resolver.resolve("isar-qemu", "isar-v0.11")
+        copy_sources = [list(e.keys())[0] for e in resolved.copy]
+        assert "isar/scripts/isar-runqemu.sh" in copy_sources, (
+            "Container copy entries must appear in resolved.copy when the "
+            "container is active via a named environment."
+        )
+
+    def test_container_copy_absent_when_container_has_none(
+        self, registry_with_container_copy_file
+    ):
+        """Container copy entries do NOT appear when the active container has no copy."""
+        manager = BspManager(config_path=str(registry_with_container_copy_file))
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("plain-build")
+        copy_sources = [list(e.keys())[0] for e in resolved.copy]
+        assert "isar/scripts/isar-runqemu.sh" not in copy_sources
+
+    def test_container_copy_propagated_via_preset(self, registry_with_container_copy_file):
+        """Container copy entries appear in ResolvedConfig.copy when resolved via a preset."""
+        manager = BspManager(config_path=str(registry_with_container_copy_file))
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("isar-qemu-v0.11")
+        copy_sources = [list(e.keys())[0] for e in resolved.copy]
+        assert "isar/scripts/isar-runqemu.sh" in copy_sources, (
+            "Container copy entries must appear in resolved.copy when the "
+            "container is selected via the named environment for a preset."
+        )
+
+    def test_container_copy_order_after_named_env_copy(
+        self, registry_with_named_env_copy_file, tmp_dir
+    ):
+        """Container copy entries come after named-env copy entries in resolved.copy.
+
+        Build a registry that has both a named-env copy AND a container copy so
+        we can check ordering.
+        """
+        import textwrap
+        yaml_content = textwrap.dedent("""
+            specification:
+              version: "2.0"
+            environments:
+              default:
+                container: "my-container"
+                variables: []
+                copy:
+                  - scripts/env-setup.sh: build/
+            containers:
+              my-container:
+                image: "test/image:latest"
+                file: null
+                args: []
+                copy:
+                  - scripts/container-setup.sh: build/
+            registry:
+              devices:
+                - slug: my-device
+                  description: "My Device"
+                  vendor: test
+                  soc_vendor: arm
+                  includes: []
+              releases:
+                - slug: my-release
+                  description: "My Release"
+                  includes: []
+              features: []
+              bsp: []
+        """)
+        registry_path = tmp_dir / "bsp-registry.yaml"
+        registry_path.write_text(yaml_content)
+        manager = BspManager(config_path=str(registry_path))
+        manager.initialize()
+        resolved = manager.resolver.resolve("my-device", "my-release")
+        copy_sources = [list(e.keys())[0] for e in resolved.copy]
+        assert "scripts/env-setup.sh" in copy_sources
+        assert "scripts/container-setup.sh" in copy_sources
+        env_idx = copy_sources.index("scripts/env-setup.sh")
+        container_idx = copy_sources.index("scripts/container-setup.sh")
+        assert env_idx < container_idx, (
+            "Named-env copy entries must precede container copy entries."
+        )
+
+    def test_container_copy_files_executed(self, registry_with_container_copy_file):
+        """_copy_files() executes copy entries coming from the container definition."""
+        manager = BspManager(config_path=str(registry_with_container_copy_file))
+        manager.initialize()
+
+        base = registry_with_container_copy_file.parent
+        (base / "isar" / "scripts").mkdir(parents=True, exist_ok=True)
+        (base / "isar" / "scripts" / "isar-runqemu.sh").write_text("#!/bin/sh\n")
+
+        resolved, _ = manager.resolver.resolve_preset("isar-qemu-v0.11")
+        manager._copy_files(resolved)
+
+        # dst "build/" is relative to the preset build path "build/isar-qemu"
+        expected = base / "build" / "isar-qemu" / "build" / "isar-runqemu.sh"
+        assert expected.exists(), (
+            f"Expected {expected} to exist after _copy_files(); "
+            "container-level copy entries must be executed."
+        )
+
+    def test_preset_container_override_uses_new_container_copy(self, tmp_dir):
+        """Preset build.container override replaces the container copy entries.
+
+        When a preset's build.container overrides the env's container, the new
+        container's copy entries are used instead of the old container's copies.
+        """
+        import textwrap
+        yaml_content = textwrap.dedent("""
+            specification:
+              version: "2.0"
+            environments:
+              default:
+                container: "old-container"
+                variables: []
+            containers:
+              old-container:
+                image: "test/old:latest"
+                file: null
+                args: []
+                copy:
+                  - scripts/old-setup.sh: build/
+              new-container:
+                image: "test/new:latest"
+                file: null
+                args: []
+                copy:
+                  - scripts/new-setup.sh: build/
+            registry:
+              devices:
+                - slug: my-device
+                  description: "My Device"
+                  vendor: test
+                  soc_vendor: arm
+                  includes: []
+              releases:
+                - slug: my-release
+                  description: "My Release"
+                  includes: []
+              features: []
+              bsp:
+                - name: my-preset
+                  description: "My Preset"
+                  device: my-device
+                  release: my-release
+                  features: []
+                  build:
+                    container: "new-container"
+                    path: build/my-preset
+        """)
+        registry_path = tmp_dir / "bsp-registry.yaml"
+        registry_path.write_text(yaml_content)
+        manager = BspManager(config_path=str(registry_path))
+        manager.initialize()
+
+        resolved, _ = manager.resolver.resolve_preset("my-preset")
+        copy_sources = [list(e.keys())[0] for e in resolved.copy]
+        # The new container's copy must be present
+        assert "scripts/new-setup.sh" in copy_sources, (
+            "The overriding container's copy entries must appear in resolved.copy."
+        )
+        # The old container's copy must NOT be present
+        assert "scripts/old-setup.sh" not in copy_sources, (
+            "The replaced container's copy entries must not appear in resolved.copy."
+        )
