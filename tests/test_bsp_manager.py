@@ -2366,3 +2366,153 @@ class TestSocVendorOverrides:
         captured = capsys.readouterr()
         assert "kas/yocto/vendors/advantech/nxp/scarthgap.yaml" in captured.out
         assert "kas/yocto/vendors/advantech/mediatek/scarthgap.yaml" in captured.out
+
+
+# =============================================================================
+# Tests for build_bsp() executing copy entries end-to-end
+# =============================================================================
+
+class TestBuildBspWithCopy:
+    """Verify that build_bsp() and build_by_components() execute copy entries."""
+
+    def test_build_bsp_executes_named_env_copy_files(
+        self, registry_with_named_env_copy_file
+    ):
+        """build_bsp() must execute copy entries coming from the named environment.
+
+        The isar-v0.11-build preset uses the isar-env named environment which
+        carries a copy entry.  After calling build_bsp() the copied file must
+        appear at the destination path relative to the preset's build directory.
+        """
+        from bsp.kas_manager import KasManager
+
+        manager = BspManager(config_path=str(registry_with_named_env_copy_file))
+        manager.initialize()
+
+        base = registry_with_named_env_copy_file.parent
+        (base / "isar" / "scripts").mkdir(parents=True, exist_ok=True)
+        (base / "isar" / "scripts" / "isar-runqemu.sh").write_text("#!/bin/sh\n")
+
+        with patch.object(KasManager, "build_project"), \
+             patch.object(KasManager, "dump_config", return_value=None), \
+             patch.object(manager, "prepare_build_directory"):
+            manager.build_bsp("isar-v0.11-build")
+
+        # Destination is relative to the preset build path (build/isar-board).
+        expected = base / "build" / "isar-board" / "build" / "isar" / "isar-runqemu.sh"
+        assert expected.exists(), (
+            f"Expected {expected} to exist after build_bsp(); "
+            "named-env copy entries must be executed during the build."
+        )
+
+    def test_build_by_components_executes_named_env_copy_files(
+        self, registry_with_named_env_copy_file
+    ):
+        """build_by_components() must execute copy entries from the named environment.
+
+        When no preset is involved the build path is empty, so copy destinations
+        are resolved relative to the registry directory (backward-compatible
+        behaviour documented in _copy_files).
+        """
+        from bsp.kas_manager import KasManager
+
+        manager = BspManager(config_path=str(registry_with_named_env_copy_file))
+        manager.initialize()
+
+        base = registry_with_named_env_copy_file.parent
+        (base / "isar" / "scripts").mkdir(parents=True, exist_ok=True)
+        (base / "isar" / "scripts" / "isar-runqemu.sh").write_text("#!/bin/sh\n")
+
+        with patch.object(KasManager, "build_project"), \
+             patch.object(KasManager, "dump_config", return_value=None), \
+             patch.object(manager, "prepare_build_directory"):
+            manager.build_by_components("isar-board", "isar-v0.11")
+
+        # Without a preset, build_path is empty, so the copy destination is
+        # resolved directly against the registry directory.
+        expected = base / "build" / "isar" / "isar-runqemu.sh"
+        assert expected.exists(), (
+            "Named-env copy entries must be executed during build_by_components()."
+        )
+
+
+# =============================================================================
+# Tests for BSP preset build.container override combined with named-env copy
+# =============================================================================
+
+class TestPresetContainerOverrideWithNamedEnvCopy:
+    """Verify that a preset's build.container override does not suppress named-env copy."""
+
+    def test_named_env_copy_preserved_in_resolved_copy(
+        self,
+        registry_with_preset_container_override_and_named_env_copy_file,
+    ):
+        """resolve_preset() keeps named-env copy entries even when build.container is set.
+
+        A BSP preset that specifies build.container to override the environment's
+        container must still include the named environment's copy entries in the
+        resolved configuration so that _copy_files() can execute them.
+        """
+        manager = BspManager(
+            config_path=str(
+                registry_with_preset_container_override_and_named_env_copy_file
+            )
+        )
+        manager.initialize()
+
+        resolved, _ = manager.resolver.resolve_preset("my-preset")
+        copy_sources = [list(e.keys())[0] for e in resolved.copy]
+        assert "scripts/global-setup.sh" in copy_sources, (
+            "Named-env copy entries must survive a preset build.container override."
+        )
+
+    def test_preset_build_container_overrides_env_container(
+        self,
+        registry_with_preset_container_override_and_named_env_copy_file,
+    ):
+        """resolve_preset() uses the preset's build.container, not the env's container."""
+        manager = BspManager(
+            config_path=str(
+                registry_with_preset_container_override_and_named_env_copy_file
+            )
+        )
+        manager.initialize()
+
+        resolved, _ = manager.resolver.resolve_preset("my-preset")
+        assert resolved.container is not None
+        assert resolved.container.image == "test/override:latest", (
+            "The preset's build.container must override the named env's container."
+        )
+
+    def test_copy_files_executed_with_preset_container_override(
+        self,
+        registry_with_preset_container_override_and_named_env_copy_file,
+    ):
+        """_copy_files() executes named-env copy entries even when build.container overrides.
+
+        This verifies the complete flow: resolve_preset() returns a config whose
+        container comes from build.container but whose copy list still contains
+        the named-env entries; _copy_files() then places the file at the correct
+        destination (relative to the preset's build path).
+        """
+        manager = BspManager(
+            config_path=str(
+                registry_with_preset_container_override_and_named_env_copy_file
+            )
+        )
+        manager.initialize()
+
+        base = registry_with_preset_container_override_and_named_env_copy_file.parent
+        (base / "scripts").mkdir(parents=True, exist_ok=True)
+        (base / "scripts" / "global-setup.sh").write_text("#!/bin/sh\n")
+
+        resolved, _ = manager.resolver.resolve_preset("my-preset")
+        manager._copy_files(resolved)
+
+        # dst "conf/" is relative to preset build path "build/my-preset"
+        expected = base / "build" / "my-preset" / "conf" / "global-setup.sh"
+        assert expected.exists(), (
+            f"Expected {expected} to exist; "
+            "named-env copy entries must be executed even when the preset "
+            "overrides the environment's container via build.container."
+        )

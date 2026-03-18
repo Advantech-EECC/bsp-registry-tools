@@ -1303,3 +1303,60 @@ def registry_with_soc_vendor_overrides_file(tmp_dir):
     registry_path = tmp_dir / "bsp-registry.yaml"
     registry_path.write_text(REGISTRY_WITH_SOC_VENDOR_OVERRIDES_YAML)
     return registry_path
+
+
+REGISTRY_WITH_PRESET_CONTAINER_OVERRIDE_AND_NAMED_ENV_COPY_YAML = """
+specification:
+  version: "2.0"
+
+environments:
+  default:
+    container: "env-container"
+    variables: []
+    copy:
+      - scripts/global-setup.sh: conf/
+
+containers:
+  env-container:
+    image: "test/env:latest"
+    file: null
+    args: []
+  override-container:
+    image: "test/override:latest"
+    file: null
+    args: []
+
+registry:
+  devices:
+    - slug: my-device
+      description: "My Device"
+      vendor: test
+      soc_vendor: arm
+      includes:
+        - kas/my-device.yaml
+  releases:
+    - slug: my-release
+      description: "My Release"
+      includes:
+        - kas/my-release.yaml
+  features: []
+  bsp:
+    - name: my-preset
+      description: "My Preset with container override"
+      device: my-device
+      release: my-release
+      features: []
+      build:
+        container: "override-container"
+        path: build/my-preset
+"""
+
+
+@pytest.fixture
+def registry_with_preset_container_override_and_named_env_copy_file(tmp_dir):
+    """Registry with named-env copy and a BSP preset that overrides the container."""
+    registry_path = tmp_dir / "bsp-registry.yaml"
+    registry_path.write_text(
+        REGISTRY_WITH_PRESET_CONTAINER_OVERRIDE_AND_NAMED_ENV_COPY_YAML
+    )
+    return registry_path
