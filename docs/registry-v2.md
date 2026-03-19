@@ -1096,6 +1096,8 @@ to every expanded preset.
 | `vendor_release` | string (opt.)    | Vendor sub-release slug. Selects a specific BSP kernel/firmware version. When `soc_vendors` is used, the slug is looked up in the matching `SocVendorOverride.releases` list; otherwise it references the flat `releases[*].vendor_overrides[*].releases[*].slug`. When omitted and the active override has sub-releases, the **first** sub-release is selected automatically. |
 | `override`       | string (opt.)    | Vendor override slug (references `releases[*].vendor_overrides[*].slug`). Selects a specific `vendor_overrides` entry by its `slug` field, bypassing vendor name matching. Useful when multiple overrides exist for the same vendor, or when the override carries a `distro` substitution. |
 | `features`       | list[str]        | Optional list of feature slugs to enable (references `features[*].slug`)        |
+| `local_conf`     | string (opt.)    | YAML block scalar (`\|`) of `local.conf` lines to append for this preset. Each non-empty line is appended to the resolved `local_conf` after device- and feature-level entries. Trailing whitespace is stripped; blank lines are ignored. |
+| `targets`        | list[str] (opt.) | List of Bitbake build targets (images or recipes) for this preset. When set, the targets are written into the `target` section of the generated KAS YAML file, instructing KAS which images to build. |
 | `build`          | object (opt.)    | Optional build overrides (container and/or output path)                         |
 
 ### `bsp[*].build` fields
@@ -1104,6 +1106,40 @@ to every expanded preset.
 |-------------|---------------|-----------------------------------------------------------------------------------|
 | `container` | string (opt.) | Container name override (key in `containers` section). When absent the container is taken from the release's named environment (or `"default"`). |
 | `path`      | string (opt.) | Build output directory. When absent, the path is auto-composed as `build/<distro>-<device>-<release>[-<feature>…]` for single-release presets, or `build/<name>-<release_slug>[-<override_slug>]` for multi-release presets. When `releases` (plural) is used, this value is treated as a *base path stem*: the release slug (and the vendor override slug when `override` is set) is appended to it — e.g. `path: build/my-bsp` expands to `build/my-bsp-scarthgap` and `build/my-bsp-styhead`. |
+
+### Preset with `local_conf` and `targets`
+
+Use `local_conf` to inject `local.conf` settings that are specific to a preset
+without adding them to the device or feature definitions.  Use `targets` to
+specify which Bitbake images or recipes to build.
+
+```yaml
+registry:
+  bsp:
+    - name: modular-ros-bsp-rsb3720
+      description: "Advantech RSB-3720 (i.MX8) – ROS 2 Humble"
+      device: rsb3720
+      release: ros2-humble-scarthgap
+      features: [systemd, security, virtualization, ipv6, usrmerge, x11, wayland]
+      local_conf: |                      # block scalar – one assignment per line
+        DISTRO_FEATURES += "x11"
+        BB_NUMBER_THREADS = "4"
+      targets:                           # Bitbake images/recipes to build
+        - ros-image-core
+      build:
+        path: build/modular-bsp-rsb3720-ros2
+```
+
+The `local_conf` lines are appended **after** device- and feature-level
+`local_conf` entries in the following priority order (lowest to highest):
+
+```
+device.local_conf  →  feature[*].local_conf  →  preset.local_conf
+```
+
+The `targets` list is forwarded as-is into the `target:` section of the
+generated KAS YAML.  When no `targets` are specified the `target:` key is
+omitted and KAS uses the default targets defined in the included KAS files.
 
 ### KAS file ordering
 
@@ -1309,6 +1345,22 @@ registry:
       build:
         container: "debian-bookworm"
         path: build/imx8mp-adv-scarthgap-ota
+
+    - name: imx8mp-adv-scarthgap-custom
+      description: "Advantech i.MX8MP Scarthgap – custom local.conf and target"
+      device: imx8mp-adv
+      release: scarthgap
+      features:
+        - ota
+      local_conf: |                      # appended after device/feature local_conf entries
+        DISTRO_FEATURES += "x11"
+        BB_NUMBER_THREADS = "4"
+      targets:                           # Bitbake images to build
+        - core-image-minimal
+        - core-image-full-cmdline
+      build:
+        container: "debian-bookworm"
+        path: build/imx8mp-adv-scarthgap-custom
 
     - name: qemuarm64-scarthgap
       description: "QEMU ARM64 Scarthgap"
