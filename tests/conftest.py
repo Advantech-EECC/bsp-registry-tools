@@ -1568,3 +1568,70 @@ def registry_with_feature_vendor_overrides_file(tmp_dir):
     registry_path = tmp_dir / "bsp-registry.yaml"
     registry_path.write_text(REGISTRY_WITH_FEATURE_VENDOR_OVERRIDES_YAML)
     return registry_path
+
+
+# ---------------------------------------------------------------------------
+# Preset local_conf / targets support
+# ---------------------------------------------------------------------------
+
+REGISTRY_WITH_PRESET_LOCAL_CONF_AND_TARGETS_YAML = """
+specification:
+  version: "2.0"
+
+environments:
+  default:
+    container: "debian-bookworm"
+
+containers:
+  debian-bookworm:
+    image: "test/debian:latest"
+    file: null
+    args: []
+
+registry:
+  devices:
+    - slug: rsb3720
+      description: "RSB-3720 (i.MX8)"
+      vendor: advantech
+      soc_vendor: nxp
+      includes:
+        - kas/rsb3720.yaml
+
+  releases:
+    - slug: ros2-humble-scarthgap
+      description: "ROS 2 Humble on Scarthgap"
+      includes:
+        - kas/ros2-humble-scarthgap.yaml
+
+  bsp:
+    - name: modular-ros-bsp-rsb3720
+      description: "Advantech RSB-3720 (i.MX8)"
+      device: rsb3720
+      release: ros2-humble-scarthgap
+      features: []
+      local_conf: |
+        DISTRO_FEATURES += "x11"
+        BB_NUMBER_THREADS = "4"
+      targets:
+        - ros-image-core
+      build:
+        container: "debian-bookworm"
+        path: build/modular-bsp-rsb3720-ros2
+
+    - name: minimal-preset-no-extras
+      description: "Preset without local_conf or targets"
+      device: rsb3720
+      release: ros2-humble-scarthgap
+      features: []
+      build:
+        container: "debian-bookworm"
+        path: build/minimal
+"""
+
+
+@pytest.fixture
+def registry_with_preset_local_conf_and_targets_file(tmp_dir):
+    """Create a registry YAML with preset-level local_conf and targets."""
+    registry_path = tmp_dir / "bsp-registry.yaml"
+    registry_path.write_text(REGISTRY_WITH_PRESET_LOCAL_CONF_AND_TARGETS_YAML)
+    return registry_path

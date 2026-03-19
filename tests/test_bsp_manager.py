@@ -3,10 +3,11 @@ Tests for BspManager registry operations (v2.0 schema).
 """
 
 import pytest
+import yaml
 from unittest.mock import patch, MagicMock
 
 from bsp import BspManager, BspPreset, Docker, V2Resolver
-from .conftest import EMPTY_REGISTRY_YAML, REGISTRY_WITH_FEATURES_YAML, REGISTRY_WITH_FRAMEWORKS_YAML, REGISTRY_WITH_VENDOR_OVERRIDES_YAML, REGISTRY_WITH_SOC_VENDOR_OVERRIDES_YAML, REGISTRY_WITH_FEATURE_VENDOR_OVERRIDES_YAML
+from .conftest import EMPTY_REGISTRY_YAML, REGISTRY_WITH_FEATURES_YAML, REGISTRY_WITH_FRAMEWORKS_YAML, REGISTRY_WITH_VENDOR_OVERRIDES_YAML, REGISTRY_WITH_SOC_VENDOR_OVERRIDES_YAML, REGISTRY_WITH_FEATURE_VENDOR_OVERRIDES_YAML, REGISTRY_WITH_PRESET_LOCAL_CONF_AND_TARGETS_YAML
 
 
 class TestBspManagerInit:
@@ -2884,3 +2885,112 @@ class TestFeatureVendorOverrides:
         assert "features/ota/rauc/advantech-rauc.yml" in resolved.kas_files
         assert "features/ota/rauc/modular-bsp-ota-nxp.yml" in resolved.kas_files
         assert "features/ota/rauc/rauc-imx-6.6.53.yml" in resolved.kas_files
+
+
+class TestPresetLocalConfAndTargets:
+    """Tests for BspPreset.local_conf (fragment) and BspPreset.targets support."""
+
+    def test_preset_local_conf_merged_into_resolved(
+        self, registry_with_preset_local_conf_and_targets_file
+    ):
+        """local_conf block scalar in a preset is split and appended to resolved.local_conf."""
+        manager = BspManager(
+            config_path=str(registry_with_preset_local_conf_and_targets_file)
+        )
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("modular-ros-bsp-rsb3720")
+        assert 'DISTRO_FEATURES += "x11"' in resolved.local_conf
+        assert 'BB_NUMBER_THREADS = "4"' in resolved.local_conf
+
+    def test_preset_local_conf_blank_lines_skipped(
+        self, registry_with_preset_local_conf_and_targets_file
+    ):
+        """Blank lines in the preset local_conf block scalar are not included."""
+        manager = BspManager(
+            config_path=str(registry_with_preset_local_conf_and_targets_file)
+        )
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("modular-ros-bsp-rsb3720")
+        assert "" not in resolved.local_conf
+
+    def test_preset_targets_propagated_to_resolved(
+        self, registry_with_preset_local_conf_and_targets_file
+    ):
+        """targets list in a preset is copied to resolved.targets."""
+        manager = BspManager(
+            config_path=str(registry_with_preset_local_conf_and_targets_file)
+        )
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("modular-ros-bsp-rsb3720")
+        assert resolved.targets == ["ros-image-core"]
+
+    def test_preset_without_targets_has_empty_list(
+        self, registry_with_preset_local_conf_and_targets_file
+    ):
+        """A preset without targets results in an empty resolved.targets list."""
+        manager = BspManager(
+            config_path=str(registry_with_preset_local_conf_and_targets_file)
+        )
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("minimal-preset-no-extras")
+        assert resolved.targets == []
+
+    def test_preset_without_local_conf_does_not_add_entries(
+        self, registry_with_preset_local_conf_and_targets_file
+    ):
+        """A preset without local_conf does not add entries to resolved.local_conf."""
+        manager = BspManager(
+            config_path=str(registry_with_preset_local_conf_and_targets_file)
+        )
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("minimal-preset-no-extras")
+        assert resolved.local_conf == []
+
+    def test_generate_kas_yaml_includes_target_section(
+        self, registry_with_preset_local_conf_and_targets_file, tmp_dir
+    ):
+        """generate_kas_yaml() writes a 'target' key when resolved.targets is non-empty."""
+        manager = BspManager(
+            config_path=str(registry_with_preset_local_conf_and_targets_file)
+        )
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("modular-ros-bsp-rsb3720")
+        out = tmp_dir / "test.yaml"
+        manager.resolver.generate_kas_yaml(resolved, str(out))
+        with open(out) as f:
+            kas = yaml.safe_load(f)
+        assert "target" in kas
+        assert kas["target"] == ["ros-image-core"]
+
+    def test_generate_kas_yaml_no_target_section_when_empty(
+        self, registry_with_preset_local_conf_and_targets_file, tmp_dir
+    ):
+        """generate_kas_yaml() omits the 'target' key when resolved.targets is empty."""
+        manager = BspManager(
+            config_path=str(registry_with_preset_local_conf_and_targets_file)
+        )
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("minimal-preset-no-extras")
+        out = tmp_dir / "test.yaml"
+        manager.resolver.generate_kas_yaml(resolved, str(out))
+        with open(out) as f:
+            kas = yaml.safe_load(f)
+        assert "target" not in kas
+
+    def test_generate_kas_yaml_includes_local_conf_header(
+        self, registry_with_preset_local_conf_and_targets_file, tmp_dir
+    ):
+        """generate_kas_yaml() writes local_conf_header entries for preset local_conf lines."""
+        manager = BspManager(
+            config_path=str(registry_with_preset_local_conf_and_targets_file)
+        )
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("modular-ros-bsp-rsb3720")
+        out = tmp_dir / "test.yaml"
+        manager.resolver.generate_kas_yaml(resolved, str(out))
+        with open(out) as f:
+            kas = yaml.safe_load(f)
+        assert "local_conf_header" in kas
+        combined = "".join(kas["local_conf_header"].values())
+        assert 'DISTRO_FEATURES += "x11"' in combined
+        assert 'BB_NUMBER_THREADS = "4"' in combined

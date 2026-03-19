@@ -538,6 +538,13 @@ class BspPreset:
                   list and applies its includes (and its ``distro`` override, if
                   present) regardless of the device's vendor field.
         features: List of feature slugs to enable (references registry.features)
+        local_conf: Optional block of local.conf lines to append for this
+                    preset.  Specified as a YAML block scalar (``|``); each
+                    non-empty line is appended to the resolved local_conf
+                    after device- and feature-level entries.
+        targets: Optional list of Bitbake build targets (images/recipes) to
+                 pass to KAS.  When non-empty these are written into the
+                 ``target`` section of the generated KAS YAML file.
         build: Optional build configuration (container + output path).  When
                absent the container is taken from the release's named
                environment and the path is auto-composed from the distro,
@@ -553,6 +560,8 @@ class BspPreset:
     vendor_release: Optional[str] = None
     override: Optional[str] = None
     features: List[str] = field(default_factory=empty_list)
+    local_conf: Optional[str] = None
+    targets: List[str] = field(default_factory=empty_list)
     build: Optional[BspBuild] = None
 
 

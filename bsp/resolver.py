@@ -55,6 +55,9 @@ class ResolvedConfig:
                           the vendor override's distro (if set) or the
                           release's distro.  Used by ``_compose_build_path``
                           and available to callers that need the actual distro.
+        targets: List of Bitbake build targets (images/recipes) to pass to
+                 KAS.  Populated from ``BspPreset.targets`` during
+                 ``resolve_preset()``; empty when resolving without a preset.
     """
     device: Device
     release: Release
@@ -66,6 +69,7 @@ class ResolvedConfig:
     env: List[EnvironmentVariable] = field(default_factory=empty_list)
     copy: List[Dict[str, str]] = field(default_factory=empty_list)
     effective_distro: Optional[str] = None
+    targets: List[str] = field(default_factory=empty_list)
 
 
 # =============================================================================
@@ -961,6 +965,19 @@ class V2Resolver:
             if not resolved.build_path:
                 resolved.build_path = self._compose_build_path(resolved)
 
+        # Apply preset-level local_conf fragment (block scalar string).
+        # Split on newlines; strip trailing whitespace only (preserve leading
+        # indentation); skip blank/whitespace-only lines.
+        if preset.local_conf:
+            for line in preset.local_conf.splitlines():
+                stripped = line.rstrip()
+                if stripped:
+                    resolved.local_conf.append(stripped)
+
+        # Apply preset-level targets.
+        if preset.targets:
+            resolved.targets = list(preset.targets)
+
         return resolved, preset
 
     # ------------------------------------------------------------------
@@ -1011,6 +1028,10 @@ class V2Resolver:
                 key = f"bsp_local_conf_{idx:02d}"
                 local_conf_header[key] = conf_line + "\n"
             kas_config["local_conf_header"] = local_conf_header
+
+        # Add target section if preset specified build targets
+        if resolved.targets:
+            kas_config["target"] = resolved.targets
 
         with open(output_path, "w", encoding="utf-8") as f:
             yaml.dump(kas_config, f, default_flow_style=False, sort_keys=False)
