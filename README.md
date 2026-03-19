@@ -254,16 +254,23 @@ bsp containers
 
 ```bash
 bsp tree
+bsp tree --full
+bsp tree --compact
 bsp --no-color tree
 bsp --registry my-registry.yaml tree
 ```
 
 Renders the full registry as a colored ASCII tree, grouped into sections:
 **Frameworks**, **Distros**, **Releases** (with vendor overrides), **Devices**,
-**Features**, and **BSP Presets** (with device, release, and feature details).
+**Features** (with vendor overrides in full mode), and **BSP Presets** (with device, release, and feature details).
 Use `--no-color` to disable colors (e.g. for scripts or log files).
 
-**Example output:**
+| Option | Description |
+|--------|-------------|
+| `--full` | Show full details including includes lists, vendor overrides for releases and features, and override slugs for presets |
+| `--compact` | Show compact output with names/slugs only (no sub-items) |
+
+**Example output (`bsp tree`):**
 
 ```
 BSP Registry
@@ -288,6 +295,34 @@ BSP Registry
         ├── device: imx8qm  release: scarthgap
         ├── vendor release: imx-6.6.53
         └── features: ota, secure-boot
+```
+
+**Example output (`bsp tree --full`):**
+
+In `--full` mode all includes lists are expanded and vendor overrides for both releases and features are shown as nested sub-trees:
+
+```
+BSP Registry
+├── Releases (1)
+│   └── scarthgap: Yocto 5.0 LTS [Yocto 5.0]
+│       ├── distro: poky
+│       ├── includes: kas/poky/scarthgap.yaml
+│       └── vendor override: advantech (distro: fsl-imx-xwayland)
+│           ├── includes: kas/yocto/vendors/advantech/scarthgap.yaml
+│           └── vendor release: imx-6.6.53: Scarthgap for i.MX 6.6.53
+│               └── includes:
+│                   └── kas/yocto/vendors/advantech/nxp/imx-6.6.53.yaml
+└── Features (1)
+    └── rauc: Enable RAUC support in the Yocto image [requires compatible_with: yocto]
+        ├── includes:
+        │   └── features/ota/rauc/rauc.yml
+        └── vendor override: advantech
+            ├── includes: features/ota/rauc/advantech-rauc.yml
+            └── soc vendor: nxp
+                ├── includes: features/ota/rauc/modular-bsp-ota-nxp.yml
+                └── vendor release: imx-6.6.53: RAUC for i.MX 6.6.53
+                    └── includes:
+                        └── features/ota/rauc/rauc-imx-6.6.53.yml
 ```
 
 #### `build` — Build a BSP image

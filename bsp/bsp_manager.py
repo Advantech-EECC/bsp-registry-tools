@@ -634,6 +634,70 @@ class BspManager:
                     if full:
                         _print_includes(item.includes, item_prefix)
 
+                        # Vendor overrides as a nested sub-tree
+                        for vo_idx, vo in enumerate(item.vendor_overrides):
+                            is_last_vo = vo_idx == len(item.vendor_overrides) - 1
+                            vo_conn   = LAST if is_last_vo else BRANCH
+                            vo_prefix = item_prefix + (BLANK if is_last_vo else PIPE)
+
+                            vo_tags = []
+                            if vo.slug:
+                                vo_tags.append(f"slug: {vo.slug}")
+                            if vo.distro:
+                                vo_tags.append(f"distro: {vo.distro}")
+                            vo_tag_str = _dim(f" ({', '.join(vo_tags)})") if vo_tags else ""
+                            print(
+                                f"{item_prefix}{vo_conn}"
+                                f"{_dim('vendor override: ')}{_slug(vo.vendor)}{vo_tag_str}"
+                            )
+
+                            # Vendor override includes
+                            vo_sub = []
+                            if vo.includes:
+                                vo_sub.append(_dim(f"includes: {', '.join(vo.includes)}"))
+                            _print_sub_lines(vo_sub, vo_prefix)
+
+                            # SoC vendor entries (if present), else flat vendor releases
+                            if vo.soc_vendors:
+                                for svo_idx, svo in enumerate(vo.soc_vendors):
+                                    is_last_svo = svo_idx == len(vo.soc_vendors) - 1
+                                    svo_conn   = LAST if is_last_svo else BRANCH
+                                    svo_prefix = vo_prefix + (BLANK if is_last_svo else PIPE)
+
+                                    svo_tag_str = _dim(f" (distro: {svo.distro})") if svo.distro else ""
+                                    print(
+                                        f"{vo_prefix}{svo_conn}"
+                                        f"{_dim('soc vendor: ')}{_slug(svo.vendor)}{svo_tag_str}"
+                                    )
+
+                                    # SoC vendor includes
+                                    svo_sub = []
+                                    if svo.includes:
+                                        svo_sub.append(_dim(f"includes: {', '.join(svo.includes)}"))
+                                    _print_sub_lines(svo_sub, svo_prefix)
+
+                                    # SoC vendor releases
+                                    for vr_idx, vr in enumerate(svo.releases):
+                                        is_last_vr = vr_idx == len(svo.releases) - 1
+                                        vr_conn   = LAST if is_last_vr else BRANCH
+                                        vr_prefix = svo_prefix + (BLANK if is_last_vr else PIPE)
+                                        print(
+                                            f"{svo_prefix}{vr_conn}"
+                                            f"{_dim('vendor release: ')}{_slug(vr.slug)}: {vr.description}"
+                                        )
+                                        _print_includes(vr.includes, vr_prefix)
+                            else:
+                                # Vendor releases
+                                for vr_idx, vr in enumerate(vo.releases):
+                                    is_last_vr = vr_idx == len(vo.releases) - 1
+                                    vr_conn   = LAST if is_last_vr else BRANCH
+                                    vr_prefix = vo_prefix + (BLANK if is_last_vr else PIPE)
+                                    print(
+                                        f"{vo_prefix}{vr_conn}"
+                                        f"{_dim('vendor release: ')}{_slug(vr.slug)}: {vr.description}"
+                                    )
+                                    _print_includes(vr.includes, vr_prefix)
+
                 elif sec_name == "BSP Presets":
                     print(f"{sec_prefix}{item_connector}{_name(item.name)}: {item.description}")
                     if compact:

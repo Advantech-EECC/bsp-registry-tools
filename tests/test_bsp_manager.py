@@ -2094,8 +2094,57 @@ class TestBspManagerTree:
         captured = capsys.readouterr()
         assert "includes:" in captured.out
 
+    def test_tree_bsp_full_mode_shows_feature_vendor_overrides(
+        self, registry_with_feature_vendor_overrides_file, capsys
+    ):
+        """full mode should show vendor overrides for features."""
+        manager = BspManager(config_path=str(registry_with_feature_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="full")
+        captured = capsys.readouterr()
+        # The rauc feature has a vendor override for 'advantech'
+        assert "vendor override: advantech" in captured.out
 
-class TestSocVendorOverrides:
+    def test_tree_bsp_full_mode_shows_feature_vendor_override_includes(
+        self, registry_with_feature_vendor_overrides_file, capsys
+    ):
+        """full mode should show vendor override includes for features."""
+        manager = BspManager(config_path=str(registry_with_feature_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="full")
+        captured = capsys.readouterr()
+        assert "advantech-rauc.yml" in captured.out
+
+    def test_tree_bsp_full_mode_shows_feature_soc_vendor_entries(
+        self, registry_with_feature_vendor_overrides_file, capsys
+    ):
+        """full mode should show soc_vendor entries inside feature vendor overrides."""
+        manager = BspManager(config_path=str(registry_with_feature_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="full")
+        captured = capsys.readouterr()
+        assert "soc vendor: nxp" in captured.out
+
+    def test_tree_bsp_full_mode_shows_feature_vendor_release(
+        self, registry_with_feature_vendor_overrides_file, capsys
+    ):
+        """full mode should show vendor releases inside feature vendor override soc_vendors."""
+        manager = BspManager(config_path=str(registry_with_feature_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="full")
+        captured = capsys.readouterr()
+        assert "vendor release: imx-6.6.53" in captured.out
+
+    def test_tree_bsp_default_mode_does_not_show_feature_vendor_overrides(
+        self, registry_with_feature_vendor_overrides_file, capsys
+    ):
+        """default mode should NOT show feature vendor override includes (full mode only)."""
+        manager = BspManager(config_path=str(registry_with_feature_vendor_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="default")
+        captured = capsys.readouterr()
+        # In default mode, feature vendor override includes are not expanded
+        assert "advantech-rauc.yml" not in captured.out
     """Tests for soc_vendors inside VendorOverride entries."""
 
     def test_soc_vendor_override_loaded_from_yaml(
