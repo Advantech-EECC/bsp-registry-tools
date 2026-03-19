@@ -469,6 +469,32 @@ class FeatureCompatibility:
 
 
 @dataclass
+class FeatureReleaseOverride:
+    """
+    Release-specific KAS configuration overrides for a feature.
+
+    A ``FeatureReleaseOverride`` entry inside ``Feature.release_overrides``
+    allows a feature to include extra KAS files only when a particular release
+    (e.g. ``scarthgap``) is active.  The resolver matches entries by comparing
+    the ``release`` field to the ``release_slug`` passed to ``resolve()``.
+
+    Include ordering when a ``FeatureReleaseOverride`` is active::
+
+        feature.includes                 (base includes, always applied)
+        → feature.release_overrides[release].includes  (release-specific extras)
+        → feature.vendor_overrides[vendor].includes    (vendor-specific extras)
+
+    Attributes:
+        release: Release slug this entry applies to (e.g. 'scarthgap').
+                 Must match the release slug passed to the resolver for this
+                 entry to be selected.
+        includes: KAS configuration files to add when this release is active.
+    """
+    release: str
+    includes: List[str] = field(default_factory=empty_list)
+
+
+@dataclass
 class Feature:
     """
     Optional BSP feature definition (e.g., OTA update, secure boot).
@@ -486,6 +512,12 @@ class Feature:
         includes: KAS configuration files that enable this feature
         local_conf: local.conf lines to append when feature is enabled
         env: Environment variables required/set by this feature
+        release_overrides: Optional list of release-specific KAS configuration
+                           overrides for this feature.  Each entry targets a
+                           single release slug; when the active release matches,
+                           the entry's ``includes`` are appended *after* the
+                           feature's base ``includes`` and *before* any
+                           ``vendor_overrides`` includes.
         vendor_overrides: Optional list of vendor-specific KAS configuration
                           overrides for this feature.  Works identically to
                           ``Release.vendor_overrides`` but is scoped to a
@@ -504,6 +536,7 @@ class Feature:
     includes: List[str] = field(default_factory=empty_list)
     local_conf: List[str] = field(default_factory=empty_list)
     env: List[EnvironmentVariable] = field(default_factory=empty_list)
+    release_overrides: List[FeatureReleaseOverride] = field(default_factory=empty_list)
     vendor_overrides: List[VendorOverride] = field(default_factory=empty_list)
 
 

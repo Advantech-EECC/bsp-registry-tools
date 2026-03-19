@@ -634,6 +634,19 @@ class BspManager:
                     if full:
                         _print_includes(item.includes, item_prefix)
 
+                        # Release overrides as a nested sub-tree
+                        has_release_overrides = bool(item.release_overrides)
+                        has_vendor_overrides = bool(item.vendor_overrides)
+                        for ro_idx, ro in enumerate(item.release_overrides):
+                            is_last_ro = ro_idx == len(item.release_overrides) - 1 and not has_vendor_overrides
+                            ro_conn   = LAST if is_last_ro else BRANCH
+                            ro_prefix = item_prefix + (BLANK if is_last_ro else PIPE)
+                            print(
+                                f"{item_prefix}{ro_conn}"
+                                f"{_dim('release override: ')}{_slug(ro.release)}"
+                            )
+                            _print_includes(ro.includes, ro_prefix)
+
                         # Vendor overrides as a nested sub-tree
                         for vo_idx, vo in enumerate(item.vendor_overrides):
                             is_last_vo = vo_idx == len(item.vendor_overrides) - 1

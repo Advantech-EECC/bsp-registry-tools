@@ -2887,7 +2887,128 @@ class TestFeatureVendorOverrides:
         assert "features/ota/rauc/rauc-imx-6.6.53.yml" in resolved.kas_files
 
 
-class TestPresetLocalConfAndTargets:
+class TestFeatureReleaseOverrides:
+    """Tests for release_overrides on feature definitions."""
+
+    def test_feature_release_overrides_loaded_from_yaml(
+        self, registry_with_feature_release_overrides_file
+    ):
+        """release_overrides on a Feature are parsed correctly from YAML."""
+        manager = BspManager(config_path=str(registry_with_feature_release_overrides_file))
+        manager.initialize()
+        feature = manager.resolver.get_feature("ostree")
+        assert len(feature.release_overrides) == 2
+        ro_scarthgap = feature.release_overrides[0]
+        assert ro_scarthgap.release == "scarthgap"
+        assert "features/ota/ostree/ostree-scarthgap.yml" in ro_scarthgap.includes
+        ro_styhead = feature.release_overrides[1]
+        assert ro_styhead.release == "styhead"
+        assert "features/ota/ostree/ostree-styhead.yml" in ro_styhead.includes
+
+    def test_feature_base_includes_always_applied(
+        self, registry_with_feature_release_overrides_file
+    ):
+        """Feature.includes (base) are always added regardless of release."""
+        manager = BspManager(config_path=str(registry_with_feature_release_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("adv-imx8", "scarthgap", feature_slugs=["ostree"])
+        assert "features/ota/ostree/ostree.yml" in resolved.kas_files
+
+    def test_feature_release_override_includes_applied_for_matching_release(
+        self, registry_with_feature_release_overrides_file
+    ):
+        """FeatureReleaseOverride.includes are added when the active release matches."""
+        manager = BspManager(config_path=str(registry_with_feature_release_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("adv-imx8", "scarthgap", feature_slugs=["ostree"])
+        assert "features/ota/ostree/ostree-scarthgap.yml" in resolved.kas_files
+
+    def test_feature_release_override_includes_not_applied_for_other_release(
+        self, registry_with_feature_release_overrides_file
+    ):
+        """FeatureReleaseOverride.includes are NOT added when the release does not match."""
+        manager = BspManager(config_path=str(registry_with_feature_release_overrides_file))
+        manager.initialize()
+        # scarthgap override should not appear when building against styhead
+        resolved = manager.resolver.resolve("adv-imx8", "styhead", feature_slugs=["ostree"])
+        assert "features/ota/ostree/ostree-scarthgap.yml" not in resolved.kas_files
+
+    def test_feature_release_override_correct_release_applied(
+        self, registry_with_feature_release_overrides_file
+    ):
+        """Only the matching FeatureReleaseOverride is applied for the active release."""
+        manager = BspManager(config_path=str(registry_with_feature_release_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("adv-imx8", "styhead", feature_slugs=["ostree"])
+        assert "features/ota/ostree/ostree-styhead.yml" in resolved.kas_files
+        assert "features/ota/ostree/ostree-scarthgap.yml" not in resolved.kas_files
+
+    def test_feature_release_override_after_base_includes(
+        self, registry_with_feature_release_overrides_file
+    ):
+        """Feature release override includes appear after feature.includes in kas_files."""
+        manager = BspManager(config_path=str(registry_with_feature_release_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("adv-imx8", "scarthgap", feature_slugs=["ostree"])
+        base_idx = resolved.kas_files.index("features/ota/ostree/ostree.yml")
+        override_idx = resolved.kas_files.index("features/ota/ostree/ostree-scarthgap.yml")
+        assert base_idx < override_idx
+
+    def test_feature_without_release_overrides_unaffected(
+        self, registry_with_feature_release_overrides_file
+    ):
+        """Features without release_overrides continue to work normally."""
+        manager = BspManager(config_path=str(registry_with_feature_release_overrides_file))
+        manager.initialize()
+        resolved = manager.resolver.resolve("adv-imx8", "scarthgap", feature_slugs=["secure-boot"])
+        assert "features/secure-boot/secure-boot.yml" in resolved.kas_files
+
+    def test_feature_release_override_via_preset(
+        self, registry_with_feature_release_overrides_file
+    ):
+        """Feature release overrides are applied when resolving via a BSP preset."""
+        manager = BspManager(config_path=str(registry_with_feature_release_overrides_file))
+        manager.initialize()
+        resolved, _ = manager.resolver.resolve_preset("adv-imx8-scarthgap-ostree")
+        assert "features/ota/ostree/ostree.yml" in resolved.kas_files
+        assert "features/ota/ostree/ostree-scarthgap.yml" in resolved.kas_files
+        assert "features/ota/ostree/ostree-styhead.yml" not in resolved.kas_files
+
+    def test_feature_release_override_no_match_means_no_extra_includes(
+        self, registry_with_feature_release_overrides_file
+    ):
+        """No extra includes are added when the active release has no matching override."""
+        manager = BspManager(config_path=str(registry_with_feature_release_overrides_file))
+        manager.initialize()
+        # qemu-arm64 preset uses scarthgap, so only ostree.yml + ostree-scarthgap.yml
+        resolved = manager.resolver.resolve("qemu-arm64", "scarthgap", feature_slugs=["ostree"])
+        assert "features/ota/ostree/ostree.yml" in resolved.kas_files
+        assert "features/ota/ostree/ostree-scarthgap.yml" in resolved.kas_files
+        assert "features/ota/ostree/ostree-styhead.yml" not in resolved.kas_files
+
+    def test_tree_bsp_full_mode_shows_feature_release_overrides(
+        self, registry_with_feature_release_overrides_file, capsys
+    ):
+        """tree_bsp in full mode displays feature release_overrides."""
+        manager = BspManager(config_path=str(registry_with_feature_release_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="full")
+        out = capsys.readouterr().out
+        assert "release override" in out
+        assert "scarthgap" in out
+
+    def test_tree_bsp_full_mode_shows_feature_release_override_includes(
+        self, registry_with_feature_release_overrides_file, capsys
+    ):
+        """tree_bsp in full mode shows includes inside release override entries."""
+        manager = BspManager(config_path=str(registry_with_feature_release_overrides_file))
+        manager.initialize()
+        manager.tree_bsp(use_color=False, mode="full")
+        out = capsys.readouterr().out
+        assert "ostree-scarthgap.yml" in out
+
+
+
     """Tests for BspPreset.local_conf (fragment) and BspPreset.targets support."""
 
     def test_preset_local_conf_merged_into_resolved(
