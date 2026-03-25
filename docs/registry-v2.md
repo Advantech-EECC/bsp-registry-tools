@@ -825,7 +825,9 @@ bsp:
 
 Features are optional add-ons (OTA update, secure boot, …) that can be enabled
 per-build.  Each feature can declare device compatibility constraints
-(`compatibility`) and/or framework/distro restrictions (`compatible_with`).
+(`compatibility`), framework/distro restrictions (`compatible_with`),
+release-specific includes (`release_overrides`), and vendor-specific includes
+(`vendor_overrides`).
 
 ```yaml
 registry:
@@ -963,6 +965,72 @@ The structure is identical to `releases[*].vendor_overrides[*]`:
 > Distro selection is always driven by the release-level `vendor_overrides` (and
 > the preset's `override` / `vendor_release` fields).  Feature vendor_overrides
 > only influence which KAS files are added.
+
+### Release-specific feature includes (`release_overrides`)
+
+A feature can carry a `release_overrides` list to automatically include
+extra KAS files only when a particular Yocto/Isar release is active.  This is
+useful when a feature requires a release-specific layer or configuration
+fragment (e.g. a backport patch present only in Scarthgap).
+
+**Include ordering for a feature with both `release_overrides` and `vendor_overrides`:**
+
+```
+feature.includes                               (always applied)
+  → feature.release_overrides[release].includes  (applied when release slug matches)
+  → feature.VendorOverride.includes             (applied when device.vendor matches)
+  → feature.SocVendorOverride.includes          (applied when device.soc_vendor matches)
+  → feature.VendorRelease.includes              (applied when vendor_release matches)
+```
+
+**Example — OSTree feature with release-specific layers:**
+
+```yaml
+registry:
+  features:
+    - slug: ostree
+      description: "Enable OSTree support in the Yocto image"
+      compatible_with: [yocto]
+      includes:
+        - features/ota/ostree/ostree.yml        # always included
+      release_overrides:
+        - release: scarthgap
+          includes:
+            - features/ota/ostree/ostree-scarthgap.yml  # added only for Scarthgap
+        - release: styhead
+          includes:
+            - features/ota/ostree/ostree-styhead.yml    # added only for Styhead
+      vendor_overrides:
+        - vendor: advantech
+          soc_vendors:
+            - vendor: nxp
+              includes:
+                - features/ota/ostree/modular-bsp-ota-nxp.yml  # added for NXP SoCs
+```
+
+When building against the `scarthgap` release for an Advantech NXP board, the
+resolver produces this KAS file order for the `ostree` feature:
+
+```
+features/ota/ostree/ostree.yml
+features/ota/ostree/ostree-scarthgap.yml
+features/ota/ostree/modular-bsp-ota-nxp.yml
+```
+
+For the same device but building against `styhead`, `ostree-scarthgap.yml` is
+replaced by `ostree-styhead.yml`.  For a QEMU device (no Advantech vendor
+override), only the base and release-specific files are added.
+
+#### `features[*].release_overrides[*]` fields
+
+| Field      | Type      | Description                                                                                     |
+|------------|-----------|-------------------------------------------------------------------------------------------------|
+| `release`  | string    | Release slug this entry applies to (matched against the active release's slug)                  |
+| `includes` | list[str] | KAS files added when the active release slug matches `release`                                  |
+
+> **Note**: Multiple `release_overrides` entries can coexist.  Only the entry
+> whose `release` field equals the active release slug is applied; all others
+> are silently skipped.
 
 ---
 
@@ -1155,6 +1223,10 @@ framework.includes
   → soc_vendors[device.soc_vendor].releases[vendor_release].includes  (or flat releases[vendor_release].includes)
   → device.includes
   → feature.includes
+  → feature.release_overrides[release_slug].includes    (only when release slug matches)
+  → feature.vendor_overrides[vendor].includes           (only when device.vendor matches)
+  → feature.soc_vendors[device.soc_vendor].includes     (only when soc_vendors is used on feature)
+  → feature.soc_vendors[device.soc_vendor].releases[vendor_release].includes
 ```
 
 **Effective distro** is resolved in priority order (highest wins):
@@ -1167,7 +1239,9 @@ This ensures that base build-system configuration (framework) is loaded first, f
 by distribution defaults (which may be overridden by the active `vendor_overrides` entry's
 `distro` field), then vendor-wide includes, then release-specific settings, then any
 vendor override includes (common + selected sub-release), then device-specific machine
-config, and finally any optional feature additions.
+config, and finally any optional feature additions.  Within each feature, base includes
+come first, followed by release-specific overrides (`release_overrides`), and then
+vendor-specific overrides (`vendor_overrides`).
 
 ---
 
