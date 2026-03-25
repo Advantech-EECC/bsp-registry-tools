@@ -1635,3 +1635,108 @@ def registry_with_preset_local_conf_and_targets_file(tmp_dir):
     registry_path = tmp_dir / "bsp-registry.yaml"
     registry_path.write_text(REGISTRY_WITH_PRESET_LOCAL_CONF_AND_TARGETS_YAML)
     return registry_path
+
+
+# ---------------------------------------------------------------------------
+# Feature release_overrides support
+# ---------------------------------------------------------------------------
+
+REGISTRY_WITH_FEATURE_RELEASE_OVERRIDES_YAML = """
+specification:
+  version: "2.0"
+containers:
+  debian-bookworm:
+    image: "test/debian:bookworm"
+    file: null
+    args: []
+registry:
+  frameworks:
+    - slug: yocto
+      description: "Yocto Project build system"
+      vendor: "Yocto Project"
+      includes:
+        - kas/yocto/yocto.yaml
+  distro:
+    - slug: poky
+      description: "Poky (Yocto Project reference distro)"
+      vendor: yocto
+      framework: yocto
+      includes:
+        - kas/poky/distro/poky.yaml
+  devices:
+    - slug: adv-imx8
+      description: "Advantech i.MX8 Board"
+      vendor: advantech
+      soc_vendor: nxp
+      includes:
+        - kas/adv-imx8.yaml
+    - slug: qemu-arm64
+      description: "QEMU ARM64"
+      vendor: qemu
+      soc_vendor: arm
+      includes:
+        - kas/qemu/qemuarm64.yaml
+  releases:
+    - slug: scarthgap
+      distro: poky
+      description: "Yocto 5.0 LTS (Scarthgap)"
+      yocto_version: "5.0"
+      includes:
+        - kas/poky/scarthgap.yaml
+    - slug: styhead
+      distro: poky
+      description: "Yocto 5.1 (Styhead)"
+      yocto_version: "5.1"
+      includes:
+        - kas/poky/styhead.yaml
+  features:
+    - slug: ostree
+      description: "Enable OSTree support in the Yocto image"
+      compatible_with: [yocto]
+      includes:
+        - features/ota/ostree/ostree.yml
+      release_overrides:
+        - release: scarthgap
+          includes:
+            - features/ota/ostree/ostree-scarthgap.yml
+        - release: styhead
+          includes:
+            - features/ota/ostree/ostree-styhead.yml
+    - slug: secure-boot
+      description: "Enable secure boot"
+      includes:
+        - features/secure-boot/secure-boot.yml
+  bsp:
+    - name: adv-imx8-scarthgap-ostree
+      description: "Advantech i.MX8 Scarthgap with OSTree"
+      device: adv-imx8
+      release: scarthgap
+      features: [ostree]
+      build:
+        container: "debian-bookworm"
+        path: build/adv-imx8-scarthgap-ostree
+    - name: adv-imx8-styhead-ostree
+      description: "Advantech i.MX8 Styhead with OSTree"
+      device: adv-imx8
+      release: styhead
+      features: [ostree]
+      build:
+        container: "debian-bookworm"
+        path: build/adv-imx8-styhead-ostree
+    - name: qemu-arm64-scarthgap-ostree
+      description: "QEMU ARM64 Scarthgap with OSTree"
+      device: qemu-arm64
+      release: scarthgap
+      features: [ostree]
+      build:
+        container: "debian-bookworm"
+        path: build/qemu-arm64-scarthgap-ostree
+"""
+
+
+@pytest.fixture
+def registry_with_feature_release_overrides_file(tmp_dir):
+    """Create a registry YAML with release_overrides on features."""
+    registry_path = tmp_dir / "bsp-registry.yaml"
+    registry_path.write_text(REGISTRY_WITH_FEATURE_RELEASE_OVERRIDES_YAML)
+    return registry_path
