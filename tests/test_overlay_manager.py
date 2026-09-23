@@ -332,17 +332,21 @@ class TestBspManagerOverlayIntegration:
     def _resolved(self, manager):
         return manager.resolver.resolve("test-device", "test-release")
 
-    def test_overlay_appends_kas_fragment(self, registry_file):
+    def test_overlay_appends_kas_fragment(self, registry_file, tmp_path):
         overlay = OverlayEntry(name="dev", repos={
             "meta-imx": RepoOverride(branch="feature/x"),
         })
         manager = BspManager(config_path=str(registry_file), overlay=overlay)
         manager.initialize()
+        build_path = tmp_path / "build"
         kas_mgr = manager._get_kas_manager_for_resolved(
-            self._resolved(manager), use_container=False
+            self._resolved(manager), use_container=False,
+            build_path_override=str(build_path),
         )
         overlay_file = kas_mgr.kas_files[-1]
         assert "bsp_overlay_dev_" in overlay_file
+        # Overlay fragments are generated under <build_path>/overlays/
+        assert Path(overlay_file).parent == build_path / "overlays"
         data = yaml.safe_load(Path(overlay_file).read_text())
         assert data["repos"]["meta-imx"]["branch"] == "feature/x"
         manager._cleanup_temp_kas_file()
@@ -374,7 +378,8 @@ class TestBspManagerOverlayIntegration:
         manager = BspManager(config_path=str(registry_file), overlay=overlay)
         manager.initialize()
         kas_mgr = manager._get_kas_manager_for_resolved(
-            self._resolved(manager), use_container=True
+            self._resolved(manager), use_container=True,
+            build_path_override=str(tmp_path / "build"),
         )
         assert any(
             v.host == str(tmp_path) and v.container == str(tmp_path)

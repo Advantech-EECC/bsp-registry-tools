@@ -1448,11 +1448,16 @@ class BspManager:
         # Apply a named repository overlay (if any) by appending a generated
         # KAS fragment after the registry files so KAS config merging applies
         # the overrides on top of the registry defaults.
+        effective_build_path = (
+            build_path_override if build_path_override is not None else resolved.build_path
+        )
         overlay_volumes: List[DockerVolume] = []
         if self.overlay and self.overlay.repos:
+            overlays_dir = Path(effective_build_path) / "overlays"
+            resolver.ensure_directory(str(overlays_dir))
             overlay_fd, overlay_path = tempfile.mkstemp(
                 prefix=f"bsp_overlay_{self.overlay.name}_", suffix=".yml",
-                dir=str(self.config_path.parent),
+                dir=str(overlays_dir),
             )
             os.close(overlay_fd)
             OverlayManager().generate_overlay_kas_yaml(self.overlay, overlay_path)
@@ -1489,9 +1494,6 @@ class BspManager:
             else []
         )
         container_volumes = list(container_volumes) + overlay_volumes
-        effective_build_path = (
-            build_path_override if build_path_override is not None else resolved.build_path
-        )
 
         kas_mgr = KasManager(
             kas_files,
