@@ -373,6 +373,7 @@ bsp overlay add <name> -d "Description" \
 
 bsp overlay set-repo <name> meta-x@feature/foo   # branch override (keep URL)
 bsp overlay set-repo <name> meta-x=<url>@<ref>   # URL + refspec override
+bsp overlay set-repo <name> <url>@<ref>          # bare URL (name derived from URL)
 bsp overlay set-repo <name> meta-x@tag:v1.2      # pin to a tag
 bsp overlay set-repo <name> meta-x@commit:<sha>  # pin to a commit
 bsp overlay set-path <name> meta-x=~/src/meta-x  # use local checkout in-place

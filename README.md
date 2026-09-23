@@ -296,6 +296,11 @@ bsp overlay add modular-bsp-dev \
 bsp overlay set-repo modular-bsp-dev \
   meta-imx=https://github.com/example/meta-imx.git@fix/display
 
+# Bare URLs work too — the repo name is derived from the URL's last path
+# segment (credentials like https://user@host/... are handled correctly)
+bsp overlay set-repo modular-bsp-dev \
+  https://github.com/example/meta-imx.git@fix/display
+
 # Pin to a tag or commit
 bsp overlay set-repo modular-bsp-dev meta-imx@tag:v1.2
 bsp overlay set-repo modular-bsp-dev meta-imx@commit:<sha>

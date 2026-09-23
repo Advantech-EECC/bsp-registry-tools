@@ -2079,12 +2079,13 @@ def main() -> int:
         overlay_add.add_argument(
             "--repo",
             action="append",
-            metavar="REPO[@REFSPEC]|REPO=URL[@REFSPEC]",
+            metavar="REPO[@REFSPEC]|REPO=URL[@REFSPEC]|URL[@REFSPEC]",
             default=None,
             help=(
                 "Initial repo override spec; may be given multiple times.  "
                 "Examples: 'meta-x@feature/foo', "
                 "'meta-x=https://host/meta-x.git@fix/bar', "
+                "'https://host/meta-x.git@fix/bar' (repo name derived from URL), "
                 "'meta-x@tag:v1.2', 'meta-x@commit:<sha>'"
             ),
         )
@@ -2112,10 +2113,11 @@ def main() -> int:
         overlay_set_repo.add_argument("name", help="Name of the overlay to update").completer = OverlaysCompleter()
         overlay_set_repo.add_argument(
             "spec",
-            metavar="REPO[@REFSPEC]|REPO=URL[@REFSPEC]",
+            metavar="REPO[@REFSPEC]|REPO=URL[@REFSPEC]|URL[@REFSPEC]",
             help=(
                 "Repo override spec.  Examples: 'meta-x@feature/foo', "
                 "'meta-x=https://host/meta-x.git@fix/bar', "
+                "'https://host/meta-x.git@fix/bar' (repo name derived from URL), "
                 "'meta-x@tag:v1.2', 'meta-x@commit:<sha>'"
             ),
         )

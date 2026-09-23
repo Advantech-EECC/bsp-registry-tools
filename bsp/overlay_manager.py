@@ -175,6 +175,52 @@ def _classify_refspec(refspec: str) -> Tuple[str, str]:
     return "branch", refspec
 
 
+def _looks_like_url(value: str) -> bool:
+    """Return True when *value* looks like a bare git URL rather than a
+    ``<repo>=...`` or ``<repo>@...`` spec.
+
+    Only the part before the first ``=`` is inspected so that specs like
+    ``meta-x=https://host/repo.git`` are not mistaken for bare URLs.
+    """
+    head = value.split("=", 1)[0]
+    return "://" in head or head.startswith("git@")
+
+
+def _split_url_refspec(value: str) -> Tuple[str, Optional[str]]:
+    """Split ``<url>[@<refspec>]`` into ``(url, refspec-or-None)``.
+
+    Only an ``@`` that appears *after* the first ``/`` of the host/path part
+    can separate a refspec: userinfo in URLs like ``https://user@host/path``
+    or ``git@host:org/repo.git`` always occurs before the first slash, so it
+    is never mistaken for a refspec separator.  The *last* such ``@`` is used.
+    """
+    scheme_end = value.find("://")
+    path_search_start = scheme_end + 3 if scheme_end != -1 else 0
+    first_slash = value.find("/", path_search_start)
+    if first_slash == -1:
+        # No path component (e.g. scp-style git@host:repo.git) — no refspec.
+        return value, None
+    at_pos = value.rfind("@")
+    if at_pos <= first_slash:
+        return value, None
+    return value[:at_pos], value[at_pos + 1:]
+
+
+def _derive_repo_name_from_url(url: str) -> str:
+    """Derive a repo name from a git URL (last path segment, sans ``.git``)."""
+    tail = url.rstrip("/").rsplit("/", 1)[-1]
+    if ":" in tail:
+        # scp-style URL without a slash after the colon: git@host:repo.git
+        tail = tail.rsplit(":", 1)[-1]
+    if tail.endswith(".git"):
+        tail = tail[:-4]
+    if not tail:
+        logging.error("Could not derive a repo name from URL '%s'. "
+                      "Use the explicit '<repo>=<url>[@<refspec>]' form.", url)
+        sys.exit(1)
+    return tail
+
+
 def parse_repo_spec(spec: str) -> Tuple[str, RepoOverride]:
     """Parse a repo override spec into ``(repo_name, RepoOverride)``.
 
@@ -183,6 +229,11 @@ def parse_repo_spec(spec: str) -> Tuple[str, RepoOverride]:
         <repo>@<refspec>              # keep registry URL, override refspec
         <repo>=<url>                  # override URL only
         <repo>=<url>@<refspec>        # override URL and refspec
+        <url>                         # override URL; repo name derived from URL
+        <url>@<refspec>               # override URL and refspec; name derived
+
+    When a bare URL is given, the repo name is derived from the last path
+    segment of the URL (with any ``.git`` suffix removed).
 
     ``<refspec>`` may use the explicit prefixes ``branch:``, ``tag:`` or
     ``commit:``; a bare 40-character SHA is treated as a commit and any other
@@ -195,27 +246,21 @@ def parse_repo_spec(spec: str) -> Tuple[str, RepoOverride]:
     url: Optional[str] = None
     refspec: Optional[str] = None
 
-    if "=" in spec:
+    if _looks_like_url(spec):
+        # Bare URL form: derive the repo name from the URL itself.  Split the
+        # refspec at the last '@' so credentials in the URL are preserved
+        # (e.g. https://user@host/org/repo@feature/foo).
+        url, refspec = _split_url_refspec(spec)
+        repo = _derive_repo_name_from_url(url)
+    elif "=" in spec:
         repo, _, rest = spec.partition("=")
-        # Split off an optional trailing @refspec.  Split on the *last* '@'
-        # so that ssh URLs like git@host:org/repo.git keep their user part.
-        if "@" in rest:
-            candidate_url, _, candidate_ref = rest.rpartition("@")
-            if candidate_ref.startswith(("branch:", "tag:", "commit:")):
-                url, refspec = candidate_url, candidate_ref
-            elif ":" in candidate_ref:
-                # e.g. meta-x=git@host:org/repo.git — the '@' belongs to the URL
-                url = rest
-            else:
-                url, refspec = candidate_url, candidate_ref
-        else:
-            url = rest
+        url, refspec = _split_url_refspec(rest)
     elif "@" in spec:
         repo, _, refspec = spec.partition("@")
     else:
         logging.error(
-            "Invalid repo spec '%s'. Use '<repo>@<refspec>', '<repo>=<url>' "
-            "or '<repo>=<url>@<refspec>'.",
+            "Invalid repo spec '%s'. Use '<repo>@<refspec>', '<repo>=<url>', "
+            "'<repo>=<url>@<refspec>' or '<url>[@<refspec>]'.",
             spec,
         )
         sys.exit(1)

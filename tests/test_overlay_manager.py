@@ -100,6 +100,62 @@ class TestParseRepoSpec:
         assert ov.url == "git@github.com:example/meta-imx.git"
         assert ov.tag == "v2.0"
 
+    def test_bare_url_derives_repo_name(self):
+        repo, ov = parse_repo_spec("https://github.com/example/meta-imx.git")
+        assert repo == "meta-imx"
+        assert ov.url == "https://github.com/example/meta-imx.git"
+        assert ov.branch is None
+
+    def test_bare_url_with_refspec(self):
+        repo, ov = parse_repo_spec(
+            "https://github.com/example/meta-imx.git@fix/display"
+        )
+        assert repo == "meta-imx"
+        assert ov.url == "https://github.com/example/meta-imx.git"
+        assert ov.branch == "fix/display"
+
+    def test_bare_url_with_credentials_and_refspec(self):
+        # Regression: URLs with embedded credentials must not be split at the
+        # userinfo '@' (https://user@host/...).
+        repo, ov = parse_repo_spec(
+            "https://AdvEECC@dev.azure.com/AdvEECC/EECC_Internal/_git/"
+            "preprod-meta-modular-bsp-nxp@feature/aom2521b0-preliminary-support"
+        )
+        assert repo == "preprod-meta-modular-bsp-nxp"
+        assert ov.url == (
+            "https://AdvEECC@dev.azure.com/AdvEECC/EECC_Internal/_git/"
+            "preprod-meta-modular-bsp-nxp"
+        )
+        assert ov.branch == "feature/aom2521b0-preliminary-support"
+
+    def test_bare_url_with_credentials_no_refspec(self):
+        repo, ov = parse_repo_spec(
+            "https://user@dev.azure.com/org/project/_git/meta-x"
+        )
+        assert repo == "meta-x"
+        assert ov.url == "https://user@dev.azure.com/org/project/_git/meta-x"
+        assert ov.branch is None
+
+    def test_bare_ssh_url(self):
+        repo, ov = parse_repo_spec("git@github.com:example/meta-imx.git")
+        assert repo == "meta-imx"
+        assert ov.url == "git@github.com:example/meta-imx.git"
+        assert ov.branch is None
+
+    def test_bare_ssh_url_with_refspec(self):
+        repo, ov = parse_repo_spec("git@github.com:example/meta-imx.git@main")
+        assert repo == "meta-imx"
+        assert ov.url == "git@github.com:example/meta-imx.git"
+        assert ov.branch == "main"
+
+    def test_bare_url_with_explicit_tag_refspec(self):
+        repo, ov = parse_repo_spec(
+            "https://github.com/example/meta-imx.git@tag:v1.2"
+        )
+        assert repo == "meta-imx"
+        assert ov.tag == "v1.2"
+        assert ov.branch is None
+
     def test_invalid_spec_exits(self):
         with pytest.raises(SystemExit):
             parse_repo_spec("just-a-repo-name")
