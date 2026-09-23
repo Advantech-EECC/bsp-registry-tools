@@ -356,6 +356,38 @@ bsp remotes show <name>                          # show details
 
 ---
 
+## `bsp overlay` — Named KAS repository overlays
+
+Stored in `~/.config/bsp/overlays.yaml` (override with `BSP_OVERLAYS_CONFIG=…`).
+Override repo URLs, branches, tags, commits, or use local checkouts without
+editing the shared registry.
+
+```bash
+bsp overlay                                      # list overlay names
+bsp overlay list                                 # same as above
+bsp overlay -v                                   # list with override counts
+
+bsp overlay add <name>                           # create an empty overlay
+bsp overlay add <name> -d "Description" \
+  --repo meta-x@feature/foo                      # create with an override
+
+bsp overlay set-repo <name> meta-x@feature/foo   # branch override (keep URL)
+bsp overlay set-repo <name> meta-x=<url>@<ref>   # URL + refspec override
+bsp overlay set-repo <name> meta-x@tag:v1.2      # pin to a tag
+bsp overlay set-repo <name> meta-x@commit:<sha>  # pin to a commit
+bsp overlay set-path <name> meta-x=~/src/meta-x  # use local checkout in-place
+
+bsp overlay show <name>                          # show details
+bsp overlay unset-repo <name> meta-x             # drop one repo override
+bsp overlay remove <name>                        # remove an overlay
+bsp overlay rm <name>                            # alias for remove
+
+bsp --overlay <name> build <preset>              # apply overlay to a build
+bsp --overlay <name> fetch <preset>              # apply overlay to a fetch
+```
+
+---
+
 ## `bsp server` — HTTP server (REST + GraphQL)
 
 Requires: `pip install "bsp-registry-tools[server]"`
