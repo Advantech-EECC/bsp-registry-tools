@@ -22,6 +22,7 @@ from typing import List, Optional, Tuple
 from .bsp_manager import BspManager
 from .registry_fetcher import DEFAULT_BRANCH, RegistryFetcher, RemoteRegistrySpec
 from .remotes_manager import RemotesManager
+from .overlay_manager import OverlayManager
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +348,16 @@ class RemotesCompleter:
             if branch is None:
                 branch = DEFAULT_BRANCH
             return [r.name for r in RemotesManager().ensure_default_remote(branch=branch)]
+        except (Exception, SystemExit):  # pylint: disable=broad-except
+            return []
+
+
+class OverlaysCompleter:
+    """Complete named overlay names from ``~/.config/bsp/overlays.yaml``."""
+
+    def __call__(self, prefix: str, parsed_args, **kwargs) -> List[str]:
+        try:
+            return [o.name for o in OverlayManager().load()]
         except (Exception, SystemExit):  # pylint: disable=broad-except
             return []
 

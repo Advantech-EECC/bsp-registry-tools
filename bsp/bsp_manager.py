@@ -25,7 +25,8 @@ from .flasher import FlashResult, ImageFlasher
 from .gatherer import ArtifactGatherer, GatherResult
 from .kas_manager import KasManager
 from .manifest_paths import ManifestPathSanitizer
-from .models import BspPreset, DeployConfig, Docker, EnvironmentVariable, YoctoCacheConfig, FlashConfig, ScanConfig
+from .models import BspPreset, DeployConfig, Docker, DockerVolume, EnvironmentVariable, YoctoCacheConfig, FlashConfig, ScanConfig
+from .overlay_manager import OverlayEntry, OverlayManager
 from .path_resolver import resolver
 from .resolver import ResolvedConfig, V2Resolver
 from .scanner import ImageScanner, ScanResult
@@ -84,6 +85,7 @@ class BspManager:
         config_path: str = "bsp-registry.yaml",
         verbose: bool = False,
         config_paths: Optional[List[Tuple[str, str]]] = None,
+        overlay: Optional[OverlayEntry] = None,
     ):
         """
         Initialize BSP manager.
@@ -95,6 +97,9 @@ class BspManager:
             config_paths: Ordered list of ``(name, path)`` pairs for
                           multi-registry mode.  When provided *config_path* is
                           ignored.
+            overlay: Optional named repository overlay whose repo overrides
+                     are applied on top of the registry KAS files at build
+                     time.
         """
         if config_paths:
             self._config_pairs: List[Tuple[str, Path]] = [
@@ -104,6 +109,7 @@ class BspManager:
             self._config_pairs = [("default", Path(config_path))]
 
         self.verbose = verbose
+        self.overlay = overlay
         self.logger = logging.getLogger(self.__class__.__name__)
 
         # Multi-registry state — populated by load_configuration / initialize
@@ -1439,6 +1445,34 @@ class BspManager:
                     kas_files.append(str((base / p).resolve()))
             self._temp_kas_file = None
 
+        # Apply a named repository overlay (if any) by appending a generated
+        # KAS fragment after the registry files so KAS config merging applies
+        # the overrides on top of the registry defaults.
+        overlay_volumes: List[DockerVolume] = []
+        if self.overlay and self.overlay.repos:
+            overlay_fd, overlay_path = tempfile.mkstemp(
+                prefix=f"bsp_overlay_{self.overlay.name}_", suffix=".yml",
+                dir=str(self.config_path.parent),
+            )
+            os.close(overlay_fd)
+            OverlayManager().generate_overlay_kas_yaml(self.overlay, overlay_path)
+            kas_files.append(overlay_path)
+            self._temp_overlay_kas_file = overlay_path
+            self.logger.info(
+                "Applying overlay '%s' (%d repo override(s))",
+                self.overlay.name, len(self.overlay.repos),
+            )
+            # Mount local checkout paths into the build container so KAS can
+            # use them in-place.
+            if use_container:
+                for ov in self.overlay.repos.values():
+                    if ov.path:
+                        overlay_volumes.append(
+                            DockerVolume(host=ov.path, container=ov.path)
+                        )
+        else:
+            self._temp_overlay_kas_file = None
+
         container_image = (
             resolved.container.image
             if resolved.container and use_container
@@ -1454,6 +1488,7 @@ class BspManager:
             if resolved.container and use_container
             else []
         )
+        container_volumes = list(container_volumes) + overlay_volumes
         effective_build_path = (
             build_path_override if build_path_override is not None else resolved.build_path
         )
@@ -1477,15 +1512,16 @@ class BspManager:
         return kas_mgr
 
     def _cleanup_temp_kas_file(self) -> None:
-        """Remove the temporary KAS YAML file if one was created."""
-        temp_file = getattr(self, "_temp_kas_file", None)
-        if temp_file and os.path.exists(temp_file):
-            try:
-                os.unlink(temp_file)
-                logging.debug(f"Removed temporary KAS file: {temp_file}")
-            except OSError as e:
-                logging.warning(f"Could not remove temporary KAS file: {e}")
-        self._temp_kas_file = None
+        """Remove temporary KAS YAML files if any were created."""
+        for attr in ("_temp_kas_file", "_temp_overlay_kas_file"):
+            temp_file = getattr(self, attr, None)
+            if temp_file and os.path.exists(temp_file):
+                try:
+                    os.unlink(temp_file)
+                    logging.debug(f"Removed temporary KAS file: {temp_file}")
+                except OSError as e:
+                    logging.warning(f"Could not remove temporary KAS file: {e}")
+            setattr(self, attr, None)
 
     # ------------------------------------------------------------------
     # Build

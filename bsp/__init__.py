@@ -102,6 +102,7 @@ from .gatherer import ArtifactGatherer, GatherResult
 from .storage import CloudStorageBackend, create_backend
 from .gui import launch_gui, TEXTUAL_AVAILABLE
 from .remotes_manager import RemotesManager, RemoteEntry
+from .overlay_manager import OverlayManager, OverlayEntry, RepoOverride
 
 __all__ = [
     # Exceptions
@@ -185,4 +186,11 @@ __all__ = [
     # GUI
     "launch_gui",
     "TEXTUAL_AVAILABLE",
+    # Remotes
+    "RemotesManager",
+    "RemoteEntry",
+    # Overlays
+    "OverlayManager",
+    "OverlayEntry",
+    "RepoOverride",
 ]

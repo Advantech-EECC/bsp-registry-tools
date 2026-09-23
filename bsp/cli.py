@@ -12,6 +12,7 @@ from .completions import (
     ContainerCompleter,
     DevicesCompleter,
     FeaturesCompleter,
+    OverlaysCompleter,
     OverrideCompleter,
     PresetsCompleter,
     ReleasesCompleter,
@@ -21,6 +22,7 @@ from .completions import (
 )
 from .exceptions import COLORAMA_AVAILABLE, ColoramaFormatter
 from .models import ArchiveConfig, IndexConfig, YoctoCacheConfig
+from .overlay_manager import OverlayManager
 from .registry_fetcher import DEFAULT_BRANCH, DEFAULT_REMOTE_URL, RegistryFetcher
 from .remotes_manager import RemotesManager
 from .utils import SUPPORTED_REGISTRY_VERSION, get_installed_package_version
@@ -400,6 +402,81 @@ def _dispatch_remotes(args) -> int:
 
 
 # =============================================================================
+# Overlay sub-command dispatcher (no registry loading required)
+# =============================================================================
+
+
+def _print_overlay(entry) -> None:
+    """Print a full overlay description."""
+    print(f"name:        {entry.name}")
+    print(f"description: {entry.description or '(none)'}")
+    if entry.repos:
+        print("repos:")
+        for repo in sorted(entry.repos):
+            print(f"  {repo}: {entry.repos[repo].describe()}")
+    else:
+        print("repos:       (none)")
+
+
+def _dispatch_overlay(args) -> int:
+    """Handle all ``bsp overlay`` sub-commands.
+
+    Returns an integer exit code (0 = success).
+    """
+    mgr = OverlayManager()
+    subcmd = getattr(args, "overlay_command", None)
+
+    if subcmd is None or subcmd == "list":
+        # Plain ``bsp overlay`` / ``bsp overlay list`` — list all overlays
+        verbose = getattr(args, "overlay_verbose", False)
+        for o in mgr.load():
+            if verbose:
+                desc = f" — {o.description}" if o.description else ""
+                print(f"{o.name}\t{len(o.repos)} repo override(s){desc}")
+            else:
+                print(o.name)
+        return 0
+
+    if subcmd == "add":
+        entry = mgr.add(
+            name=args.name,
+            description=getattr(args, "description", "") or "",
+            repo_specs=getattr(args, "repo", None) or [],
+        )
+        print(f"Added overlay '{entry.name}' with {len(entry.repos)} repo override(s)")
+        return 0
+
+    if subcmd in ("remove", "rm"):
+        mgr.remove(args.name)
+        print(f"Removed overlay '{args.name}'")
+        return 0
+
+    if subcmd == "show":
+        _print_overlay(mgr.get(args.name))
+        return 0
+
+    if subcmd == "set-repo":
+        entry = mgr.set_repo(args.name, args.spec)
+        print(f"Updated overlay '{entry.name}':")
+        _print_overlay(entry)
+        return 0
+
+    if subcmd == "set-path":
+        entry = mgr.set_path(args.name, args.spec)
+        print(f"Updated overlay '{entry.name}':")
+        _print_overlay(entry)
+        return 0
+
+    if subcmd == "unset-repo":
+        entry = mgr.unset_repo(args.name, args.repo)
+        print(f"Removed override for repo '{args.repo}' from overlay '{entry.name}'")
+        return 0
+
+    logging.error("Unknown overlay sub-command: %s", subcmd)
+    return 1
+
+
+# =============================================================================
 # Completions sub-command dispatcher (no registry loading required)
 # =============================================================================
 
@@ -500,6 +577,17 @@ def main() -> int:
                             help="Skip updating the cached registry clone")
         parser.add_argument("--local", action="store_true",
                             help="Force local registry lookup only (do not use remote)")
+        overlay_flag = parser.add_argument(
+            "--overlay",
+            default=None,
+            metavar="NAME",
+            help=(
+                "Apply a named repository overlay (see 'bsp overlay') to the "
+                "build, overriding repo URLs/branches/tags/commits or using "
+                "local checkouts without editing the registry"
+            ),
+        )
+        overlay_flag.completer = OverlaysCompleter()
 
         # GUI shortcut: `bsp gui` launches the TUI launcher
         parser.add_argument(
@@ -1947,6 +2035,112 @@ def main() -> int:
         remotes_show.add_argument("name", help="Name of the remote to show").completer = RemotesCompleter()
 
         # ----------------------------------------------------------------
+        # Overlay command  (persistent named KAS repository overlays
+        # persisted in ~/.config/bsp/overlays.yaml)
+        # ----------------------------------------------------------------
+        overlay_parser = subparsers.add_parser(
+            "overlay",
+            help="Manage named KAS repository overlays (repo URL/ref/path overrides)",
+        )
+        overlay_parser.add_argument(
+            "-v", "--verbose-list",
+            dest="overlay_verbose",
+            action="store_true",
+            help="Show override count and description alongside each overlay name when listing",
+        )
+        overlay_subparsers = overlay_parser.add_subparsers(
+            dest="overlay_command",
+            help="Overlay sub-command",
+        )
+
+        # bsp overlay list
+        overlay_list = overlay_subparsers.add_parser(
+            "list",
+            help="List configured overlays",
+        )
+        overlay_list.add_argument(
+            "-v", "--verbose-list",
+            dest="overlay_verbose",
+            action="store_true",
+            help="Show override count and description alongside each overlay name",
+        )
+
+        # bsp overlay add <name> [--description TEXT] [--repo SPEC ...]
+        overlay_add = overlay_subparsers.add_parser(
+            "add",
+            help="Create a new named overlay",
+        )
+        overlay_add.add_argument("name", help="Unique name for the overlay (e.g. 'modular-bsp-dev')")
+        overlay_add.add_argument(
+            "--description", "-d",
+            default="",
+            help="Free-form description of the overlay",
+        )
+        overlay_add.add_argument(
+            "--repo",
+            action="append",
+            metavar="REPO[@REFSPEC]|REPO=URL[@REFSPEC]",
+            default=None,
+            help=(
+                "Initial repo override spec; may be given multiple times.  "
+                "Examples: 'meta-x@feature/foo', "
+                "'meta-x=https://host/meta-x.git@fix/bar', "
+                "'meta-x@tag:v1.2', 'meta-x@commit:<sha>'"
+            ),
+        )
+
+        # bsp overlay remove <name>
+        overlay_remove = overlay_subparsers.add_parser(
+            "remove",
+            aliases=["rm"],
+            help="Remove a named overlay",
+        )
+        overlay_remove.add_argument("name", help="Name of the overlay to remove").completer = OverlaysCompleter()
+
+        # bsp overlay show <name>
+        overlay_show = overlay_subparsers.add_parser(
+            "show",
+            help="Show details about a named overlay",
+        )
+        overlay_show.add_argument("name", help="Name of the overlay to show").completer = OverlaysCompleter()
+
+        # bsp overlay set-repo <name> <repo>[@refspec] | <repo>=<url>[@refspec]
+        overlay_set_repo = overlay_subparsers.add_parser(
+            "set-repo",
+            help="Set a repository URL/branch/tag/commit override on an overlay",
+        )
+        overlay_set_repo.add_argument("name", help="Name of the overlay to update").completer = OverlaysCompleter()
+        overlay_set_repo.add_argument(
+            "spec",
+            metavar="REPO[@REFSPEC]|REPO=URL[@REFSPEC]",
+            help=(
+                "Repo override spec.  Examples: 'meta-x@feature/foo', "
+                "'meta-x=https://host/meta-x.git@fix/bar', "
+                "'meta-x@tag:v1.2', 'meta-x@commit:<sha>'"
+            ),
+        )
+
+        # bsp overlay set-path <name> <repo>=<local-path>
+        overlay_set_path = overlay_subparsers.add_parser(
+            "set-path",
+            help="Point a repository at a local checkout directory",
+        )
+        overlay_set_path.add_argument("name", help="Name of the overlay to update").completer = OverlaysCompleter()
+        overlay_set_path.add_argument(
+            "spec",
+            metavar="REPO=PATH",
+            help="Local checkout spec, e.g. 'meta-x=~/src/meta-x'",
+        )
+
+        # bsp overlay unset-repo <name> <repo>
+        overlay_unset_repo = overlay_subparsers.add_parser(
+            "unset-repo",
+            help="Remove the override for a repository from an overlay",
+        )
+        overlay_unset_repo.add_argument("name", help="Name of the overlay to update").completer = OverlaysCompleter()
+        overlay_unset_repo.add_argument("repo", help="Name of the KAS repository to stop overriding")
+
+        # ----------------------------------------------------------------
         # Completions command
         # ----------------------------------------------------------------
         completions_parser = subparsers.add_parser(
@@ -2012,8 +2206,22 @@ def main() -> int:
         if args.command == "remotes":
             return _dispatch_remotes(args)
 
+        if args.command == "overlay":
+            return _dispatch_overlay(args)
+
         if args.command == "completions":
             return _dispatch_completions(args)
+
+        # Resolve the active overlay (if any) before loading the registry so
+        # that an unknown overlay name fails fast.
+        overlay_entry = None
+        overlay_name = getattr(args, "overlay", None)
+        if overlay_name:
+            overlay_entry = OverlayManager().get(overlay_name)
+            logging.info(
+                "Using overlay '%s' (%d repo override(s))",
+                overlay_entry.name, len(overlay_entry.repos),
+            )
 
         # Resolve registry file path
         LOCAL_DEFAULTS = ["bsp-registry.yaml", "bsp-registry.yml"]
@@ -2021,15 +2229,15 @@ def main() -> int:
         if args.registry is not None:
             registry_path = args.registry
             logging.info("Using explicitly provided registry: %s", registry_path)
-            bsp_mgr = BspManager(registry_path, verbose=args.verbose)
+            bsp_mgr = BspManager(registry_path, verbose=args.verbose, overlay=overlay_entry)
         elif args.local:
             registry_path = local_registry or LOCAL_DEFAULTS[0]
             logging.info("Using local registry (--local): %s", registry_path)
-            bsp_mgr = BspManager(registry_path, verbose=args.verbose)
+            bsp_mgr = BspManager(registry_path, verbose=args.verbose, overlay=overlay_entry)
         elif local_registry is not None:
             registry_path = local_registry
             logging.info("Using local registry: %s", registry_path)
-            bsp_mgr = BspManager(registry_path, verbose=args.verbose)
+            bsp_mgr = BspManager(registry_path, verbose=args.verbose, overlay=overlay_entry)
         else:
             from .registry_fetcher import RemoteRegistrySpec
             fetcher = RegistryFetcher()
