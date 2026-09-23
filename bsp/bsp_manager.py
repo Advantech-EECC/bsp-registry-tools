@@ -1462,10 +1462,12 @@ class BspManager:
             os.close(overlay_fd)
             OverlayManager().generate_overlay_kas_yaml(self.overlay, overlay_path)
             kas_files.append(overlay_path)
-            self._temp_overlay_kas_file = overlay_path
+            # Kept after the build (not cleaned up) for traceability; the
+            # build manifest references this fragment.
+            self._overlay_kas_file = overlay_path
             self.logger.info(
-                "Applying overlay '%s' (%d repo override(s))",
-                self.overlay.name, len(self.overlay.repos),
+                "Applying overlay '%s' (%d repo override(s)); fragment kept at %s",
+                self.overlay.name, len(self.overlay.repos), overlay_path,
             )
             # Mount local checkout paths into the build container so KAS can
             # use them in-place.
@@ -1476,7 +1478,7 @@ class BspManager:
                             DockerVolume(host=ov.path, container=ov.path)
                         )
         else:
-            self._temp_overlay_kas_file = None
+            self._overlay_kas_file = None
 
         container_image = (
             resolved.container.image
@@ -1514,16 +1516,20 @@ class BspManager:
         return kas_mgr
 
     def _cleanup_temp_kas_file(self) -> None:
-        """Remove temporary KAS YAML files if any were created."""
-        for attr in ("_temp_kas_file", "_temp_overlay_kas_file"):
-            temp_file = getattr(self, attr, None)
-            if temp_file and os.path.exists(temp_file):
-                try:
-                    os.unlink(temp_file)
-                    logging.debug(f"Removed temporary KAS file: {temp_file}")
-                except OSError as e:
-                    logging.warning(f"Could not remove temporary KAS file: {e}")
-            setattr(self, attr, None)
+        """Remove the temporary KAS YAML file if one was created.
+
+        The generated overlay fragment (``_overlay_kas_file``) is deliberately
+        kept under ``<build_path>/overlays/`` for traceability; it is
+        referenced from the build manifest.
+        """
+        temp_file = getattr(self, "_temp_kas_file", None)
+        if temp_file and os.path.exists(temp_file):
+            try:
+                os.unlink(temp_file)
+                logging.debug(f"Removed temporary KAS file: {temp_file}")
+            except OSError as e:
+                logging.warning(f"Could not remove temporary KAS file: {e}")
+        self._temp_kas_file = None
 
     # ------------------------------------------------------------------
     # Build
@@ -1815,6 +1821,26 @@ class BspManager:
 
         scrubbed_argv = paths.scrub_argv(list(sys.argv))
 
+        overlay_kas_file = getattr(self, "_overlay_kas_file", None)
+        overlay_manifest = None
+        overlay_used = bool(self.overlay and self.overlay.repos)
+        if overlay_used:
+            overlay_manifest = {
+                "name": self.overlay.name,
+                "description": self.overlay.description,
+                "fragment": paths.relativize(overlay_kas_file) if overlay_kas_file else None,
+                "repos": {
+                    repo_name: {
+                        "url": ov.url,
+                        "branch": ov.branch,
+                        "tag": ov.tag,
+                        "commit": ov.commit,
+                        "path": paths.scrub_text(ov.path),
+                    }
+                    for repo_name, ov in self.overlay.repos.items()
+                },
+            }
+
         return {
             "schema_version": "2",
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -1865,7 +1891,9 @@ class BspManager:
                 "task": task,
                 "docker_build_options": paths.scrub_text(docker_build_options),
                 "resolved_targets": selected_targets,
+                "overlay_used": overlay_used,
             },
+            "overlay": overlay_manifest,
             "components": {
                 "device": {
                     "slug": resolved.device.slug,

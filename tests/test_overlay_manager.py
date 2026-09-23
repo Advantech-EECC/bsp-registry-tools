@@ -369,8 +369,9 @@ class TestBspManagerOverlayIntegration:
         assert Path(overlay_file).parent == build_path / "overlays"
         data = yaml.safe_load(Path(overlay_file).read_text())
         assert data["repos"]["meta-imx"]["branch"] == "feature/x"
+        # Fragment is kept after cleanup for traceability
         manager._cleanup_temp_kas_file()
-        assert not Path(overlay_file).exists()
+        assert Path(overlay_file).exists()
 
     def test_no_overlay_keeps_kas_files_unchanged(self, registry_file):
         manager = BspManager(config_path=str(registry_file))
@@ -406,6 +407,65 @@ class TestBspManagerOverlayIntegration:
             for v in kas_mgr.container_volumes
         )
         manager._cleanup_temp_kas_file()
+
+    def test_build_manifest_records_overlay(self, registry_file, tmp_path):
+        import json
+        from unittest.mock import patch as _patch
+
+        overlay = OverlayEntry(
+            name="dev",
+            description="Local work",
+            repos={
+                "meta-imx": RepoOverride(
+                    url="https://example.com/meta-imx.git", branch="feature/x"
+                ),
+            },
+        )
+        manager = BspManager(config_path=str(registry_file), overlay=overlay)
+        manager.initialize()
+        output_dir = tmp_path / "build"
+        with _patch("bsp.bsp_manager.build_docker"), \
+             _patch("bsp.kas_manager.KasManager.build_project"), \
+             _patch("bsp.kas_manager.KasManager.dump_config", return_value=""), \
+             _patch("bsp.kas_manager.KasManager.validate_kas_files", return_value=True), \
+             _patch("bsp.kas_manager.KasManager.check_kas_available", return_value=True):
+            manager.build_by_components(
+                "test-device", "test-release", [],
+                build_path_override=str(output_dir),
+            )
+
+        data = json.loads((output_dir / "build-manifest.json").read_text())
+        assert data["build"]["overlay_used"] is True
+        ov = data["overlay"]
+        assert ov["name"] == "dev"
+        assert ov["description"] == "Local work"
+        assert ov["fragment"] and "overlays/" in ov["fragment"]
+        assert ov["repos"]["meta-imx"]["url"] == "https://example.com/meta-imx.git"
+        assert ov["repos"]["meta-imx"]["branch"] == "feature/x"
+        # The referenced fragment survives the build for traceability
+        overlays_dir = output_dir / "overlays"
+        assert any(overlays_dir.glob("bsp_overlay_dev_*.yml"))
+
+    def test_build_manifest_without_overlay(self, registry_file, tmp_path):
+        import json
+        from unittest.mock import patch as _patch
+
+        manager = BspManager(config_path=str(registry_file))
+        manager.initialize()
+        output_dir = tmp_path / "build"
+        with _patch("bsp.bsp_manager.build_docker"), \
+             _patch("bsp.kas_manager.KasManager.build_project"), \
+             _patch("bsp.kas_manager.KasManager.dump_config", return_value=""), \
+             _patch("bsp.kas_manager.KasManager.validate_kas_files", return_value=True), \
+             _patch("bsp.kas_manager.KasManager.check_kas_available", return_value=True):
+            manager.build_by_components(
+                "test-device", "test-release", [],
+                build_path_override=str(output_dir),
+            )
+
+        data = json.loads((output_dir / "build-manifest.json").read_text())
+        assert data["build"]["overlay_used"] is False
+        assert data["overlay"] is None
 
 
 # ---------------------------------------------------------------------------

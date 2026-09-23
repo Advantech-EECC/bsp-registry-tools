@@ -325,6 +325,12 @@ KAS YAML fragment appended after the registry files, so KAS's standard
 configuration merging applies the overrides on top of the registry defaults.
 The shared registry itself is never modified.
 
+For traceability, the generated fragment is kept under
+`<build_path>/overlays/` after the build, and the build manifest
+(`build-manifest.json`) records the overlay name, description, fragment path,
+and repository overrides in its `overlay` section (plus a
+`build.overlay_used` flag).
+
 ### Manual Registry Usage
 
 ### 1. Create a BSP Registry File
