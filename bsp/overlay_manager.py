@@ -509,10 +509,14 @@ class OverlayManager:
         registry-provided values while unset keys are inherited.
 
         For URL/refspec overrides, stale refspec keys from the registry are
-        explicitly cleared (set to ``null``) so that e.g. a ``commit`` pin in
-        the registry does not defeat a ``branch`` override.  For local path
-        overrides, ``url`` and all refspec keys are cleared so KAS uses the
-        checkout in-place.
+        explicitly cleared so that e.g. a ``commit`` pin in the registry does
+        not defeat a ``branch`` override.  For local path overrides, ``url``
+        and all refspec keys are cleared so KAS uses the checkout in-place.
+
+        The KAS schema allows ``null`` for ``url``, ``branch`` and ``tag``
+        (null removes a default value), but ``commit`` must be a string, so
+        an empty string is used to clear it (KAS treats a falsy commit as
+        unset).
         """
         repos: dict = {}
         for repo_name, ov in entry.repos.items():
@@ -523,7 +527,7 @@ class OverlayManager:
                 repo_cfg["url"] = None
                 repo_cfg["branch"] = None
                 repo_cfg["tag"] = None
-                repo_cfg["commit"] = None
+                repo_cfg["commit"] = ""
             else:
                 if ov.url:
                     repo_cfg["url"] = ov.url
@@ -532,7 +536,7 @@ class OverlayManager:
                     # registry-level pins do not conflict with the override.
                     repo_cfg["branch"] = ov.branch
                     repo_cfg["tag"] = ov.tag
-                    repo_cfg["commit"] = ov.commit
+                    repo_cfg["commit"] = ov.commit or ""
             repos[repo_name] = repo_cfg
         return {
             "header": {"version": KAS_OVERLAY_HEADER_VERSION},

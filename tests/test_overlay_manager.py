@@ -292,9 +292,10 @@ class TestOverlayKasGeneration:
         repo = cfg["repos"]["meta-imx"]
         assert repo["url"] == "https://example.com/meta-imx.git"
         assert repo["branch"] == "fix/x"
-        # Conflicting refspec keys are explicitly cleared
+        # Conflicting refspec keys are explicitly cleared; the KAS schema
+        # forbids null for commit, so an empty string is used instead.
         assert repo["tag"] is None
-        assert repo["commit"] is None
+        assert repo["commit"] == ""
 
     def test_url_only_override_keeps_registry_refspec(self):
         entry = OverlayEntry(name="dev", repos={
@@ -312,7 +313,26 @@ class TestOverlayKasGeneration:
         assert repo["url"] is None
         assert repo["branch"] is None
         assert repo["tag"] is None
-        assert repo["commit"] is None
+        assert repo["commit"] == ""
+
+    def test_kas_schema_accepts_generated_fragment(self):
+        """The generated fragment must validate against the KAS schema."""
+        jsonschema = pytest.importorskip("jsonschema")
+        try:
+            import json
+            import pkgutil
+            schema = json.loads(pkgutil.get_data("kas", "schema-kas.json"))
+        except (ImportError, TypeError):
+            pytest.skip("kas package not installed")
+        entry = OverlayEntry(name="dev", repos={
+            "meta-imx": RepoOverride(
+                url="https://user@example.com/org/_git/meta-imx",
+                branch="feature/x",
+            ),
+            "meta-local": RepoOverride(path="/home/user/src/meta-local"),
+        })
+        cfg = OverlayManager.build_overlay_kas_config(entry)
+        jsonschema.validate(cfg, schema)
 
     def test_generate_yaml_file(self, mgr, tmp_path):
         entry = OverlayEntry(name="dev", repos={
