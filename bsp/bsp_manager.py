@@ -1455,11 +1455,10 @@ class BspManager:
         if self.overlay and self.overlay.repos:
             overlays_dir = Path(effective_build_path) / "overlays"
             resolver.ensure_directory(str(overlays_dir))
-            overlay_fd, overlay_path = tempfile.mkstemp(
-                prefix=f"bsp_overlay_{self.overlay.name}_", suffix=".yml",
-                dir=str(overlays_dir),
-            )
-            os.close(overlay_fd)
+            # Use a stable, per-overlay filename (overwritten on each run) so
+            # repeated builds with --overlay do not accumulate fragment files.
+            safe_name = re.sub(r"[^A-Za-z0-9._-]", "_", self.overlay.name)
+            overlay_path = str(overlays_dir / f"bsp_overlay_{safe_name}.yml")
             OverlayManager().generate_overlay_kas_yaml(self.overlay, overlay_path)
             kas_files.append(overlay_path)
             # Kept after the build (not cleaned up) for traceability; the
