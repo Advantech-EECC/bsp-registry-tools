@@ -123,6 +123,12 @@ class BspManager:
         self.containers = {}       # Dict[str, Docker]
         self.resolver = None       # V2Resolver | None
 
+    def _overlay_registry_path(self) -> Optional[Path]:
+        """Return the active overlay's registry overlay file, if any."""
+        if self.overlay and self.overlay.registry:
+            return Path(self.overlay.registry).expanduser()
+        return None
+
     def load_configuration(self) -> None:
         """
         Load and parse BSP configuration from all registry YAML files.
@@ -140,7 +146,11 @@ class BspManager:
                 if not reg_path.exists():
                     logging.error(f"Config file not found: {reg_path}")
                     sys.exit(1)
-                model = get_registry_from_yaml_file(reg_path)
+                model = get_registry_from_yaml_file(
+                    reg_path,
+                    overlay_registry=self._overlay_registry_path(),
+                    overlay_name=self.overlay.name if self.overlay else None,
+                )
                 self.registries.append((reg_name, model))
                 logging.info(
                     f"Registry '{reg_name}' loaded successfully from {reg_path}"
@@ -1434,13 +1444,19 @@ class BspManager:
             kas_files = [temp_path]
             self._temp_kas_file = temp_path
         else:
-            # Resolve relative paths against the registry directory
+            # Resolve relative paths against the registry directory; when a
+            # registry overlay is active, its directory takes precedence so
+            # overlay-provided KAS fragments resolve relative to the overlay.
             base = self.config_path.parent
+            overlay_registry = self._overlay_registry_path()
+            overlay_base = overlay_registry.parent if overlay_registry else None
             kas_files = []
             for f in resolved.kas_files:
                 p = Path(f)
                 if p.is_absolute():
                     kas_files.append(str(p))
+                elif overlay_base and (overlay_base / p).exists():
+                    kas_files.append(str((overlay_base / p).resolve()))
                 else:
                     kas_files.append(str((base / p).resolve()))
             self._temp_kas_file = None
@@ -1496,6 +1512,11 @@ class BspManager:
         )
         container_volumes = list(container_volumes) + overlay_volumes
 
+        search_paths = [str(self.config_path.parent)]
+        overlay_registry = self._overlay_registry_path()
+        if overlay_registry:
+            search_paths.insert(0, str(overlay_registry.parent))
+
         kas_mgr = KasManager(
             kas_files,
             effective_build_path,
@@ -1508,7 +1529,7 @@ class BspManager:
             container_privileged=(
                 resolved.container.privileged if resolved.container and use_container else False
             ),
-            search_paths=[str(self.config_path.parent)],
+            search_paths=search_paths,
             env_manager=env_mgr,
             verbose=self.verbose,
         )
@@ -1821,13 +1842,19 @@ class BspManager:
         scrubbed_argv = paths.scrub_argv(list(sys.argv))
 
         overlay_kas_file = getattr(self, "_overlay_kas_file", None)
+        overlay_registry = self._overlay_registry_path()
+        registry_overlay_used = overlay_registry is not None
         overlay_manifest = None
-        overlay_used = bool(self.overlay and self.overlay.repos)
+        overlay_used = bool(self.overlay and (self.overlay.repos or registry_overlay_used))
         if overlay_used:
             overlay_manifest = {
                 "name": self.overlay.name,
                 "description": self.overlay.description,
                 "fragment": paths.relativize(overlay_kas_file) if overlay_kas_file else None,
+                "registry": (
+                    paths.scrub_text(str(overlay_registry)) if overlay_registry else None
+                ),
+                "registry_overlay_used": registry_overlay_used,
                 "repos": {
                     repo_name: {
                         "url": ov.url,

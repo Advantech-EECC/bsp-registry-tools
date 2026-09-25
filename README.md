@@ -331,6 +331,33 @@ For traceability, the generated fragment is kept under
 and repository overrides in its `overlay` section (plus a
 `build.overlay_used` flag).
 
+#### Registry overlays
+
+Beyond per-repo overrides, an overlay can carry a full **registry overlay
+YAML** that is merged on top of the shared registry at build time — letting
+you override devices, releases, features, containers, presets, environment
+variables, etc. without touching the shared `bsp-registry`:
+
+```bash
+# Generate the overlay directory structure (idempotent)
+bsp overlay scaffold modular-bsp-dev --description "Local work"
+#   ~/.config/bsp/overlays/modular-bsp-dev/registry.yaml  ← edit this
+#   ~/.config/bsp/overlays/modular-bsp-dev/kas/           ← extra KAS fragments
+#   ~/.config/bsp/overlays/modular-bsp-dev/README.md
+
+bsp --overlay modular-bsp-dev build my-preset
+```
+
+The overlay directory location can be overridden with `BSP_OVERLAYS_DIR=…`.
+In the registry overlay, entries in the slug/name-keyed lists (`devices`,
+`releases`, `features`, `distro`, `frameworks`, `vendors`, `bsp`) merge **by
+slug**: an entry with an existing slug deep-merges into (and overrides) the
+shared definition; new slugs are appended.  Relative KAS include paths from
+the overlay resolve against the overlay directory first, then the registry
+directory.  The manifest records the registry overlay path and a
+`registry_overlay_used` flag; `bsp overlay show` displays the registered
+registry file.
+
 ### Manual Registry Usage
 
 ### 1. Create a BSP Registry File

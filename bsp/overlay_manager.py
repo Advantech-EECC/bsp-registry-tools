@@ -52,6 +52,8 @@ import yaml
 
 DEFAULT_OVERLAYS_CONFIG = Path.home() / ".config" / "bsp" / "overlays.yaml"
 
+DEFAULT_OVERLAYS_DIR = Path.home() / ".config" / "bsp" / "overlays"
+
 # KAS config format version used for the generated overlay fragment.  Kept in
 # sync with V2Resolver.generate_kas_yaml.
 KAS_OVERLAY_HEADER_VERSION = 14
@@ -66,6 +68,19 @@ def _overlays_config_path() -> Path:
     """
     env = os.environ.get("BSP_OVERLAYS_CONFIG")
     return Path(env) if env else DEFAULT_OVERLAYS_CONFIG
+
+
+def _overlays_dir() -> Path:
+    """Return the base directory for per-overlay files.
+
+    Can be overridden via the ``BSP_OVERLAYS_DIR`` environment variable;
+    otherwise it defaults to a directory next to the overlays config file
+    (``<config-dir>/overlays``, i.e. ``~/.config/bsp/overlays``).
+    """
+    env = os.environ.get("BSP_OVERLAYS_DIR")
+    if env:
+        return Path(env)
+    return _overlays_config_path().parent / "overlays"
 
 
 # ---------------------------------------------------------------------------
@@ -137,18 +152,24 @@ class OverlayEntry:
         name:        Display name used to reference this overlay.
         description: Optional free-form description.
         repos:       Mapping of KAS repo name to its :class:`RepoOverride`.
+        registry:    Optional path to a registry overlay YAML file merged on
+                     top of the shared registry at build time.
     """
 
     name: str
     description: str = ""
     repos: Dict[str, RepoOverride] = field(default_factory=dict)
+    registry: Optional[str] = None
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "name": self.name,
             "description": self.description,
             "repos": {repo: ov.to_dict() for repo, ov in self.repos.items()},
         }
+        if self.registry:
+            result["registry"] = self.registry
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -360,6 +381,7 @@ class OverlayManager:
                 name=str(name),
                 description=str(item.get("description") or ""),
                 repos=repos,
+                registry=str(item["registry"]) if item.get("registry") else None,
             ))
         return result
 
@@ -495,6 +517,111 @@ class OverlayManager:
         logging.error("Overlay '%s' not found.", name)
         self._print_available(overlays)
         sys.exit(1)
+
+    # ------------------------------------------------------------------
+    # Scaffolding
+    # ------------------------------------------------------------------
+
+    _SCAFFOLD_REGISTRY_TEMPLATE = """\
+# Registry overlay for the '{name}' bsp overlay.
+#
+# This document is merged on top of the shared bsp-registry at build time
+# when the overlay is active (bsp --overlay {name} ...).  Entries in the
+# slug-keyed lists below (devices, releases, features, distro, frameworks,
+# vendors, bsp) merge BY SLUG/NAME: an entry whose slug already exists in
+# the shared registry deep-merges into (and overrides) it; new slugs are
+# appended.  Scalars override, nested dicts merge, other lists concatenate.
+#
+# Relative KAS include paths are resolved against this overlay's directory
+# first, then against the shared registry directory.  Put extra KAS
+# fragments in the kas/ subdirectory next to this file.
+#
+# Examples (uncomment and adapt):
+#
+# registry:
+#   devices:
+#     - slug: my-board                # existing slug -> overrides that device
+#       includes:
+#         - kas/my-board-extra.yaml   # resolved from this overlay directory
+#   releases:
+#     - slug: my-release
+#       local_conf:
+#         - 'IMAGE_INSTALL:append = " my-package"'
+#   bsp:
+#     - name: my-preset
+#       build:
+#         path: build/my-preset-dev
+#
+# containers:
+#   my-container:
+#     image: "example/builder:latest"
+#
+# environment:
+#   variables:
+#     - name: MY_VAR
+#       value: my-value
+registry: {{}}
+"""
+
+    _SCAFFOLD_README_TEMPLATE = """\
+# bsp overlay '{name}'
+
+This directory holds the files of the '{name}' bsp overlay.
+
+- `registry.yaml` — registry overlay merged on top of the shared
+  bsp-registry when building with `bsp --overlay {name} ...`.
+- `kas/` — extra KAS fragment files referenced from `registry.yaml`
+  (e.g. via a device or release `includes` list).
+
+Manage the overlay with `bsp overlay show {name}`,
+`bsp overlay set-repo {name} ...`, `bsp overlay remove {name}`.
+"""
+
+    def scaffold(self, name: str, description: str = "") -> OverlayEntry:
+        """Create (or complete) the directory structure for a named overlay.
+
+        Generates ``<overlays-dir>/<name>/`` with a starter ``registry.yaml``,
+        a ``kas/`` directory for extra KAS fragments, and a short
+        ``README.md``.  The overlay entry is created if it does not exist and
+        its ``registry`` field is pointed at the generated ``registry.yaml``.
+
+        The operation is idempotent: existing files are never overwritten,
+        only missing pieces are filled in.
+
+        Returns:
+            The created or updated :class:`OverlayEntry`.
+        """
+        overlays = self.load()
+        entry = next((o for o in overlays if o.name == name), None)
+        if entry is None:
+            entry = OverlayEntry(name=name, description=description)
+            overlays.append(entry)
+        elif description and not entry.description:
+            entry.description = description
+
+        overlay_dir = _overlays_dir() / name
+        kas_dir = overlay_dir / "kas"
+        registry_file = overlay_dir / "registry.yaml"
+        readme_file = overlay_dir / "README.md"
+
+        kas_dir.mkdir(parents=True, exist_ok=True)
+        if not registry_file.exists():
+            registry_file.write_text(
+                self._SCAFFOLD_REGISTRY_TEMPLATE.format(name=name),
+                encoding="utf-8",
+            )
+            self.logger.info("Created %s", registry_file)
+        if not readme_file.exists():
+            readme_file.write_text(
+                self._SCAFFOLD_README_TEMPLATE.format(name=name),
+                encoding="utf-8",
+            )
+            self.logger.info("Created %s", readme_file)
+
+        if not entry.registry:
+            entry.registry = str(registry_file)
+        self.save(overlays)
+        return entry
 
     # ------------------------------------------------------------------
     # KAS YAML generation

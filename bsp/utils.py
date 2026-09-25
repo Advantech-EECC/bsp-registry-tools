@@ -261,7 +261,89 @@ def _load_and_merge_includes(filename: Path, _visited: Optional[Set[Path]] = Non
     return _deep_merge_yaml_dicts(accumulated, yaml_dict)
 
 
-def get_registry_from_yaml_file(filename: Path) -> RegistryRoot:
+# Slug-keyed registry lists: list name -> identifying key.  Used when merging
+# a registry overlay so that an overlay entry with an existing slug/name
+# deep-merges into the base entry instead of being appended as a duplicate.
+_REGISTRY_KEYED_LISTS: Dict[str, str] = {
+    "devices": "slug",
+    "releases": "slug",
+    "features": "slug",
+    "distro": "slug",
+    "frameworks": "slug",
+    "vendors": "slug",
+    "bsp": "name",
+}
+
+
+def _merge_keyed_list(base: List[Any], override: List[Any], key: str) -> List[Any]:
+    """Merge two lists of dicts by identifying *key*.
+
+    Entries in *override* whose key matches an entry in *base* are deep-merged
+    into (and override) the base entry in place; entries with new keys are
+    appended.  Non-dict or key-less entries are appended as-is.
+    """
+    result = list(base)
+    index = {
+        item.get(key): i
+        for i, item in enumerate(result)
+        if isinstance(item, dict) and item.get(key) is not None
+    }
+    for item in override:
+        if isinstance(item, dict) and item.get(key) is not None and item.get(key) in index:
+            i = index[item[key]]
+            result[i] = _deep_merge_yaml_dicts(result[i], item)
+        else:
+            result.append(item)
+    return result
+
+
+def merge_registry_overlay(base: Dict[Any, Any], overlay: Dict[Any, Any]) -> Dict[Any, Any]:
+    """Merge a registry *overlay* document on top of a *base* registry dict.
+
+    Like :func:`_deep_merge_yaml_dicts` (scalars from the overlay win, nested
+    dicts merge recursively) with one refinement: the slug/name-keyed lists
+    under ``registry`` (``devices``, ``releases``, ``features``, ``distro``,
+    ``frameworks``, ``vendors``, ``bsp``) merge entries **by their
+    identifying key** instead of concatenating, so an overlay entry with an
+    existing slug overrides the base entry while new slugs are appended.
+
+    The overlay's ``specification`` block is stripped, mirroring how include
+    files are treated: version validation applies only to the base registry.
+    """
+    overlay = dict(overlay)
+    overlay.pop("specification", None)
+
+    result = dict(base)
+    for key, value in overlay.items():
+        if key == "registry" and isinstance(result.get(key), dict) and isinstance(value, dict):
+            base_reg = dict(result[key])
+            for reg_key, reg_value in value.items():
+                keyed = _REGISTRY_KEYED_LISTS.get(reg_key)
+                if (
+                    keyed
+                    and isinstance(base_reg.get(reg_key), list)
+                    and isinstance(reg_value, list)
+                ):
+                    base_reg[reg_key] = _merge_keyed_list(
+                        base_reg[reg_key], reg_value, keyed
+                    )
+                elif isinstance(base_reg.get(reg_key), dict) and isinstance(reg_value, dict):
+                    base_reg[reg_key] = _deep_merge_yaml_dicts(base_reg[reg_key], reg_value)
+                else:
+                    base_reg[reg_key] = reg_value
+            result[key] = base_reg
+        elif isinstance(result.get(key), dict) and isinstance(value, dict):
+            result[key] = _deep_merge_yaml_dicts(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def get_registry_from_yaml_file(
+    filename: Path,
+    overlay_registry: Optional[Path] = None,
+    overlay_name: Optional[str] = None,
+) -> RegistryRoot:
     """
     Parse YAML file into structured RegistryRoot object using dacite.
 
@@ -280,6 +362,13 @@ def get_registry_from_yaml_file(filename: Path) -> RegistryRoot:
 
     Args:
         filename: Path to registry YAML file
+        overlay_registry: Optional path to a registry overlay YAML document
+                          merged on top of the loaded registry (slug-aware,
+                          see :func:`merge_registry_overlay`) before type
+                          validation.  Include directives inside the overlay
+                          are resolved relative to the overlay file.
+        overlay_name: Optional overlay name used in log/error messages when
+                      *overlay_registry* is given.
 
     Returns:
         Structured registry configuration as RegistryRoot object
@@ -309,6 +398,24 @@ def get_registry_from_yaml_file(filename: Path) -> RegistryRoot:
             f"for upgrade instructions."
         )
         sys.exit(1)
+
+    # Apply an overlay registry document (slug-aware merge) before validation
+    if overlay_registry is not None:
+        label = f"overlay '{overlay_name}'" if overlay_name else "registry overlay"
+        if not Path(overlay_registry).is_file():
+            logging.error(
+                f"Registry overlay file for {label} not found: {overlay_registry}"
+            )
+            sys.exit(1)
+        try:
+            overlay_dict = _load_and_merge_includes(Path(overlay_registry))
+        except SystemExit:
+            logging.error(f"Error while applying {label} registry: {overlay_registry}")
+            raise
+        yaml_dict = merge_registry_overlay(yaml_dict, overlay_dict)
+        logging.info(
+            f"Registry overlay active ({label}): {overlay_registry}"
+        )
 
     # Pre-process containers list to dictionary format if needed
     if 'containers' in yaml_dict and isinstance(yaml_dict['containers'], list):

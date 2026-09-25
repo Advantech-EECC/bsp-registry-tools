@@ -383,6 +383,13 @@ bsp overlay unset-repo <name> meta-x             # drop one repo override
 bsp overlay remove <name>                        # remove an overlay
 bsp overlay rm <name>                            # alias for remove
 
+bsp overlay scaffold <name>                      # generate overlay dir structure:
+                                                 #   ~/.config/bsp/overlays/<name>/
+                                                 #     registry.yaml  (registry overrides)
+                                                 #     kas/           (extra KAS fragments)
+                                                 #     README.md
+                                                 # (BSP_OVERLAYS_DIR=… to relocate)
+
 bsp --overlay <name> build <preset>              # apply overlay to a build
 bsp --overlay <name> fetch <preset>              # apply overlay to a fetch
 ```

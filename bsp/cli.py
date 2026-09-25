@@ -410,6 +410,11 @@ def _print_overlay(entry) -> None:
     """Print a full overlay description."""
     print(f"name:        {entry.name}")
     print(f"description: {entry.description or '(none)'}")
+    if entry.registry:
+        exists = "" if Path(entry.registry).expanduser().is_file() else " (missing)"
+        print(f"registry:    {entry.registry}{exists}")
+    else:
+        print("registry:    (none)")
     if entry.repos:
         print("repos:")
         for repo in sorted(entry.repos):
@@ -453,6 +458,16 @@ def _dispatch_overlay(args) -> int:
 
     if subcmd == "show":
         _print_overlay(mgr.get(args.name))
+        return 0
+
+    if subcmd == "scaffold":
+        entry = mgr.scaffold(
+            args.name,
+            description=getattr(args, "description", "") or "",
+        )
+        overlay_dir = Path(entry.registry).parent if entry.registry else None
+        print(f"Scaffolded overlay '{entry.name}'" + (f" in {overlay_dir}" if overlay_dir else ""))
+        _print_overlay(entry)
         return 0
 
     if subcmd == "set-repo":
@@ -2104,6 +2119,25 @@ def main() -> int:
             help="Show details about a named overlay",
         )
         overlay_show.add_argument("name", help="Name of the overlay to show").completer = OverlaysCompleter()
+
+        # bsp overlay scaffold <name> [--description TEXT]
+        overlay_scaffold = overlay_subparsers.add_parser(
+            "scaffold",
+            help=(
+                "Generate the overlay directory structure "
+                "(registry.yaml, kas/, README.md) under ~/.config/bsp/overlays/<name>/ "
+                "and register the registry overlay file; idempotent"
+            ),
+        )
+        overlay_scaffold.add_argument(
+            "name",
+            help="Name of the overlay to scaffold (created if it does not exist)",
+        ).completer = OverlaysCompleter()
+        overlay_scaffold.add_argument(
+            "--description",
+            default="",
+            help="Free-form description (used when creating a new overlay)",
+        )
 
         # bsp overlay set-repo <name> <repo>[@refspec] | <repo>=<url>[@refspec]
         overlay_set_repo = overlay_subparsers.add_parser(

@@ -581,3 +581,223 @@ class TestOverlayCli:
             with patch("bsp.BspManager.build_bsp") as mock_build:
                 assert bsp.main() != 0
         mock_build.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Registry overlay merge
+# ---------------------------------------------------------------------------
+
+class TestMergeRegistryOverlay:
+    def test_existing_slug_deep_merges(self):
+        from bsp.utils import merge_registry_overlay
+
+        base = {
+            "registry": {
+                "devices": [
+                    {"slug": "a", "vendor": "v", "includes": ["a.yaml"]},
+                    {"slug": "b", "vendor": "v"},
+                ],
+            },
+        }
+        overlay = {
+            "registry": {
+                "devices": [
+                    {"slug": "a", "includes": ["extra.yaml"], "vendor": "new"},
+                ],
+            },
+        }
+        merged = merge_registry_overlay(base, overlay)
+        devices = merged["registry"]["devices"]
+        assert len(devices) == 2
+        a = devices[0]
+        assert a["vendor"] == "new"                       # scalar overrides
+        assert a["includes"] == ["a.yaml", "extra.yaml"]  # lists concatenate
+
+    def test_new_slug_appended(self):
+        from bsp.utils import merge_registry_overlay
+
+        base = {"registry": {"devices": [{"slug": "a"}]}}
+        overlay = {"registry": {"devices": [{"slug": "c", "vendor": "x"}]}}
+        merged = merge_registry_overlay(base, overlay)
+        assert [d["slug"] for d in merged["registry"]["devices"]] == ["a", "c"]
+
+    def test_bsp_presets_merge_by_name(self):
+        from bsp.utils import merge_registry_overlay
+
+        base = {"registry": {"bsp": [{"name": "p", "build": {"path": "old"}}]}}
+        overlay = {"registry": {"bsp": [{"name": "p", "build": {"path": "new"}}]}}
+        merged = merge_registry_overlay(base, overlay)
+        assert len(merged["registry"]["bsp"]) == 1
+        assert merged["registry"]["bsp"][0]["build"]["path"] == "new"
+
+    def test_specification_stripped_and_top_level_merge(self):
+        from bsp.utils import merge_registry_overlay
+
+        base = {
+            "specification": {"version": "2.1"},
+            "containers": {"c1": {"image": "old"}},
+            "registry": {},
+        }
+        overlay = {
+            "specification": {"version": "9.9"},
+            "containers": {"c1": {"image": "new"}, "c2": {"image": "x"}},
+        }
+        merged = merge_registry_overlay(base, overlay)
+        assert merged["specification"] == {"version": "2.1"}
+        assert merged["containers"]["c1"]["image"] == "new"
+        assert merged["containers"]["c2"]["image"] == "x"
+
+
+# ---------------------------------------------------------------------------
+# Scaffolding
+# ---------------------------------------------------------------------------
+
+class TestScaffold:
+    @pytest.fixture
+    def overlays_dir(self, tmp_path) -> Path:
+        d = tmp_path / "overlay-files"
+        with patch.dict(os.environ, {"BSP_OVERLAYS_DIR": str(d)}):
+            yield d
+
+    def test_scaffold_creates_structure(self, mgr, overlays_dir):
+        entry = mgr.scaffold("dev", description="scaffolded")
+        base = overlays_dir / "dev"
+        assert (base / "registry.yaml").is_file()
+        assert (base / "kas").is_dir()
+        assert (base / "README.md").is_file()
+        assert entry.registry == str(base / "registry.yaml")
+        # Template must be valid YAML
+        assert yaml.safe_load((base / "registry.yaml").read_text()) == {"registry": {}}
+        # Persisted
+        loaded = OverlayManager(config_path=mgr.config_path).get("dev")
+        assert loaded.registry == str(base / "registry.yaml")
+        assert loaded.description == "scaffolded"
+
+    def test_scaffold_is_idempotent(self, mgr, overlays_dir):
+        mgr.scaffold("dev")
+        registry_file = overlays_dir / "dev" / "registry.yaml"
+        registry_file.write_text("registry: {devices: []}\n")
+        mgr.scaffold("dev")
+        # User content untouched
+        assert yaml.safe_load(registry_file.read_text()) == {"registry": {"devices": []}}
+
+    def test_scaffold_existing_overlay_keeps_repos(self, mgr, overlays_dir):
+        mgr.add("dev", repo_specs=["meta-imx@main"])
+        entry = mgr.scaffold("dev")
+        assert entry.repos["meta-imx"].branch == "main"
+        assert entry.registry
+
+
+# ---------------------------------------------------------------------------
+# Registry overlay build-time integration
+# ---------------------------------------------------------------------------
+
+class TestRegistryOverlayIntegration:
+    def _overlay_with_registry(self, tmp_path, registry_yaml: str) -> OverlayEntry:
+        overlay_dir = tmp_path / "ov" / "dev"
+        overlay_dir.mkdir(parents=True)
+        reg = overlay_dir / "registry.yaml"
+        reg.write_text(registry_yaml)
+        return OverlayEntry(name="dev", registry=str(reg))
+
+    def test_registry_overlay_overrides_device(self, registry_file, tmp_path):
+        overlay = self._overlay_with_registry(tmp_path, (
+            "registry:\n"
+            "  devices:\n"
+            "    - slug: test-device\n"
+            "      includes:\n"
+            "        - extra.yaml\n"
+        ))
+        manager = BspManager(config_path=str(registry_file), overlay=overlay)
+        manager.initialize()
+        device = manager.resolver.get_device("test-device")
+        assert "extra.yaml" in device.includes
+        assert "test.yaml" in device.includes
+
+    def test_registry_overlay_adds_new_device(self, registry_file, tmp_path):
+        overlay = self._overlay_with_registry(tmp_path, (
+            "registry:\n"
+            "  devices:\n"
+            "    - slug: new-device\n"
+            "      description: added by overlay\n"
+            "      vendor: test-vendor\n"
+            "      soc_vendor: test-soc\n"
+            "      includes: [new.yaml]\n"
+        ))
+        manager = BspManager(config_path=str(registry_file), overlay=overlay)
+        manager.initialize()
+        assert manager.resolver.get_device("new-device").includes == ["new.yaml"]
+        # Base devices untouched
+        assert manager.resolver.get_device("test-device")
+
+    def test_missing_registry_overlay_file_fails_fast(self, registry_file, tmp_path):
+        overlay = OverlayEntry(name="dev", registry=str(tmp_path / "nope.yaml"))
+        manager = BspManager(config_path=str(registry_file), overlay=overlay)
+        with pytest.raises(SystemExit):
+            manager.initialize()
+
+    def test_overlay_kas_paths_resolve_against_overlay_dir(self, registry_file, tmp_path):
+        overlay = self._overlay_with_registry(tmp_path, (
+            "registry:\n"
+            "  devices:\n"
+            "    - slug: test-device\n"
+            "      includes:\n"
+            "        - kas/extra.yaml\n"
+        ))
+        overlay_dir = Path(overlay.registry).parent
+        (overlay_dir / "kas").mkdir()
+        (overlay_dir / "kas" / "extra.yaml").write_text("header:\n  version: 14\n")
+        manager = BspManager(config_path=str(registry_file), overlay=overlay)
+        manager.initialize()
+        resolved = manager.resolver.resolve("test-device", "test-release")
+        kas_mgr = manager._get_kas_manager_for_resolved(
+            resolved, use_container=False,
+            build_path_override=str(tmp_path / "build"),
+        )
+        assert str(overlay_dir / "kas" / "extra.yaml") in kas_mgr.kas_files
+        # Overlay dir searched first for relative config files
+        assert kas_mgr.search_paths[0] == str(overlay_dir)
+        manager._cleanup_temp_kas_file()
+
+    def test_manifest_records_registry_overlay(self, registry_file, tmp_path):
+        import json
+
+        overlay = self._overlay_with_registry(tmp_path, "registry: {}\n")
+        manager = BspManager(config_path=str(registry_file), overlay=overlay)
+        manager.initialize()
+        output_dir = tmp_path / "build"
+        with patch("bsp.bsp_manager.build_docker"), \
+             patch("bsp.kas_manager.KasManager.build_project"), \
+             patch("bsp.kas_manager.KasManager.dump_config", return_value=""), \
+             patch("bsp.kas_manager.KasManager.validate_kas_files", return_value=True), \
+             patch("bsp.kas_manager.KasManager.check_kas_available", return_value=True):
+            manager.build_by_components(
+                "test-device", "test-release", [],
+                build_path_override=str(output_dir),
+            )
+        data = json.loads((output_dir / "build-manifest.json").read_text())
+        assert data["build"]["overlay_used"] is True
+        assert data["overlay"]["registry_overlay_used"] is True
+        assert data["overlay"]["registry"]
+        assert data["overlay"]["fragment"] is None  # no repo overrides
+
+
+# ---------------------------------------------------------------------------
+# Scaffold CLI
+# ---------------------------------------------------------------------------
+
+class TestScaffoldCli:
+    def test_scaffold_command(self, overlays_config, tmp_path, capsys):
+        d = tmp_path / "overlay-files"
+        with patch.dict(os.environ, {"BSP_OVERLAYS_DIR": str(d)}):
+            with patch("sys.argv", ["bsp", "overlay", "scaffold", "dev"]):
+                assert bsp.main() == 0
+        out = capsys.readouterr().out
+        assert "Scaffolded overlay 'dev'" in out
+        assert (d / "dev" / "registry.yaml").is_file()
+
+        with patch("sys.argv", ["bsp", "overlay", "show", "dev"]):
+            assert bsp.main() == 0
+        out = capsys.readouterr().out
+        assert "registry:" in out
+        assert str(d / "dev" / "registry.yaml") in out
