@@ -801,3 +801,10 @@ class TestScaffoldCli:
         out = capsys.readouterr().out
         assert "registry:" in out
         assert str(d / "dev" / "registry.yaml") in out
+
+    def test_scaffold_rejects_unsafe_name(self, overlays_config, tmp_path):
+        d = tmp_path / "overlay-files"
+        with patch.dict(os.environ, {"BSP_OVERLAYS_DIR": str(d)}):
+            m = OverlayManager(config_path=overlays_config)
+            with pytest.raises(SystemExit):
+                m.scaffold("../evil")

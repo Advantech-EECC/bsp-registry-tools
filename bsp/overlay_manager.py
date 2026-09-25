@@ -592,6 +592,12 @@ Manage the overlay with `bsp overlay show {name}`,
             The created or updated :class:`OverlayEntry`.
         """
         overlays = self.load()
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", name) or name in (".", ".."):
+            logging.error(
+                "Invalid overlay name '%s' for scaffolding: use only letters, "
+                "digits, '.', '_' and '-'.", name,
+            )
+            sys.exit(1)
         entry = next((o for o in overlays if o.name == name), None)
         if entry is None:
             entry = OverlayEntry(name=name, description=description)
