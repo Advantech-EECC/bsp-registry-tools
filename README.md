@@ -6,6 +6,19 @@ Python tools to build, fetch, and work with Yocto-based BSPs using the [KAS](htt
 
 `bsp-registry-tools` provides a command-line interface, an interactive GUI launcher, and a Python API for managing Advantech Board Support Packages (BSPs). It uses YAML-based registry files to define BSP configurations, build environments, and Docker containers, making reproducible Yocto builds straightforward.
 
+## ⚡ Quick Start
+
+The four commands you need to start building BSPs:
+
+```bash
+bsp tree                   # visual overview of the BSP registry
+bsp list                   # list all available BSP presets
+bsp build <bsp_name>       # build a BSP image
+bsp shell <bsp_name>       # enter an interactive build-environment shell
+```
+
+👉 See the [**Cheat Sheet**](docs/cheatsheet.md) for a quick reference of all commands, or read on for the full documentation.
+
 ### Key Features
 
 - 📋 **BSP registry management** via YAML configuration files
