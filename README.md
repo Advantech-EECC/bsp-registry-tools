@@ -339,7 +339,10 @@ For traceability, the generated fragment is kept under
 `<build_path>/overlays/` after the build, and the build manifest
 (`build-manifest.json`) records the overlay name, description, fragment path,
 and repository overrides in its `overlay` section (plus a
-`build.overlay_used` flag).
+`build.overlay_used` flag).  Repositories cloned because of an overlay
+URL/branch/tag/commit override are checked out under
+`<build_path>/overlays/layers/<repo>` instead of the build directory root;
+local `set-path` checkouts are used in-place.
 
 Each `--layers` entry is `<layer>[:<qualifier>]` where *layer* is a
 repo-relative directory (`.` for the repo root) and the qualifier is

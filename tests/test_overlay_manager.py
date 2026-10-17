@@ -436,13 +436,18 @@ class TestOverlayKasGeneration:
         # forbids null for commit, so an empty string is used instead.
         assert repo["tag"] is None
         assert repo["commit"] == ""
+        # Overlay clones are grouped under <build_path>/overlays/layers/.
+        assert repo["path"] == "overlays/layers/meta-imx"
 
     def test_url_only_override_keeps_registry_refspec(self):
         entry = OverlayEntry(name="dev", repos={
             "meta-imx": RepoOverride(url="https://example.com/meta-imx.git"),
         })
         repo = OverlayManager.build_overlay_kas_config(entry)["repos"]["meta-imx"]
-        assert repo == {"url": "https://example.com/meta-imx.git"}
+        assert repo == {
+            "url": "https://example.com/meta-imx.git",
+            "path": "overlays/layers/meta-imx",
+        }
 
     def test_path_override_clears_url_and_refspecs(self):
         entry = OverlayEntry(name="dev", repos={

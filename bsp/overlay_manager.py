@@ -60,6 +60,10 @@ DEFAULT_OVERLAYS_DIR = Path.home() / ".config" / "bsp" / "overlays"
 # sync with V2Resolver.generate_kas_yaml.
 KAS_OVERLAY_HEADER_VERSION = 14
 
+# Subdirectory (relative to the KAS work dir / build directory) under which
+# overlay-overridden repositories are cloned, keeping the build dir root tidy.
+OVERLAY_LAYERS_SUBDIR = "overlays/layers"
+
 _GIT_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 
 
@@ -802,8 +806,12 @@ Manage the overlay with `bsp overlay show {name}`,
 
         For URL/refspec overrides, stale refspec keys from the registry are
         explicitly cleared so that e.g. a ``commit`` pin in the registry does
-        not defeat a ``branch`` override.  For local path overrides, ``url``
-        and all refspec keys are cleared so KAS uses the checkout in-place.
+        not defeat a ``branch`` override.  Overridden repos are also given an
+        explicit ``path`` under ``overlays/layers/<repo>`` (relative to the
+        KAS work dir, i.e. the build directory) so overlay clones are grouped
+        under ``<build_path>/overlays/layers/`` instead of cluttering the
+        build directory root.  For local path overrides, ``url`` and all
+        refspec keys are cleared so KAS uses the checkout in-place.
 
         The KAS schema allows ``null`` for ``url``, ``branch`` and ``tag``
         (null removes a default value), but ``commit`` must be a string, so
@@ -835,6 +843,10 @@ Manage the overlay with `bsp overlay show {name}`,
                     repo_cfg["branch"] = ov.branch
                     repo_cfg["tag"] = ov.tag
                     repo_cfg["commit"] = ov.commit or ""
+                if ov.url or ov.branch or ov.tag or ov.commit:
+                    # Group overlay clones under <build_path>/overlays/layers/
+                    # (relative paths resolve against the KAS work dir).
+                    repo_cfg["path"] = f"{OVERLAY_LAYERS_SUBDIR}/{repo_name}"
             if ov.layers:
                 repo_cfg["layers"] = {
                     layer: {"prio": value} if isinstance(value, int) and not isinstance(value, bool) else value

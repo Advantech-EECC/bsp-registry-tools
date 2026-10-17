@@ -360,7 +360,9 @@ bsp remotes show <name>                          # show details
 
 Stored in `~/.config/bsp/overlays.yaml` (override with `BSP_OVERLAYS_CONFIG=…`).
 Override repo URLs, branches, tags, commits, or use local checkouts without
-editing the shared registry.
+editing the shared registry.  Repos cloned due to an overlay override land in
+`<build_path>/overlays/layers/<repo>` (local `set-path` checkouts are used
+in-place).
 
 ```bash
 bsp overlay                                      # list overlay names
