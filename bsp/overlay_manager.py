@@ -27,6 +27,8 @@ The design mirrors ``git remote``:
 - ``bsp overlay show``                      — show details of an overlay
 - ``bsp overlay set-repo <o> <repo>=<spec>``  — set a repo URL/ref override
 - ``bsp overlay set-path <o> <repo>=<path>``  — point a repo at a local checkout
+- ``bsp overlay set-layers <o> <repo>=<layers>`` — set the KAS layers mapping
+- ``bsp overlay unset-layers <o> <repo>``     — drop the layers mapping
 - ``bsp overlay unset-repo <o> <repo>``       — drop the override for a repo
 - ``bsp --overlay <o> build ...``             — apply an overlay to a build
 
@@ -102,6 +104,10 @@ class RepoOverride:
         commit: Full commit SHA to check out.
         path:   Local checkout directory; when set the repository is used
                 in-place instead of being cloned.
+        layers: Optional mapping of repo-relative layer directory to
+                ``None`` (enabled), ``"disabled"``, or an integer layer
+                priority — matching the KAS ``repos.<name>.layers`` schema.
+                ``"."`` means the repo root itself is a layer.
     """
 
     url: Optional[str] = None
@@ -109,10 +115,11 @@ class RepoOverride:
     tag: Optional[str] = None
     commit: Optional[str] = None
     path: Optional[str] = None
+    layers: Optional[Dict[str, object]] = None
 
     def to_dict(self) -> dict:
         result = {}
-        for key in ("url", "branch", "tag", "commit", "path"):
+        for key in ("url", "branch", "tag", "commit", "path", "layers"):
             value = getattr(self, key)
             if value is not None:
                 result[key] = value
@@ -120,27 +127,41 @@ class RepoOverride:
 
     @classmethod
     def from_dict(cls, data: dict) -> "RepoOverride":
+        layers = data.get("layers")
         return cls(
             url=data.get("url"),
             branch=data.get("branch"),
             tag=data.get("tag"),
             commit=data.get("commit"),
             path=data.get("path"),
+            layers=dict(layers) if isinstance(layers, dict) else None,
         )
+
+    def _describe_layers(self) -> str:
+        entries = []
+        for layer, value in (self.layers or {}).items():
+            if value is None:
+                entries.append(str(layer))
+            else:
+                entries.append(f"{layer}({value})")
+        return ",".join(entries)
 
     def describe(self) -> str:
         """Return a compact human-readable summary of the override."""
-        if self.path:
-            return f"path={self.path}"
         parts = []
-        if self.url:
-            parts.append(f"url={self.url}")
-        if self.branch:
-            parts.append(f"branch={self.branch}")
-        if self.tag:
-            parts.append(f"tag={self.tag}")
-        if self.commit:
-            parts.append(f"commit={self.commit}")
+        if self.path:
+            parts.append(f"path={self.path}")
+        else:
+            if self.url:
+                parts.append(f"url={self.url}")
+            if self.branch:
+                parts.append(f"branch={self.branch}")
+            if self.tag:
+                parts.append(f"tag={self.tag}")
+            if self.commit:
+                parts.append(f"commit={self.commit}")
+        if self.layers:
+            parts.append(f"layers={self._describe_layers()}")
         return ", ".join(parts) or "(empty)"
 
 
@@ -323,6 +344,69 @@ def parse_path_spec(spec: str) -> Tuple[str, str]:
     return repo, str(path.resolve()) if path.exists() else str(path.absolute())
 
 
+def parse_layers_spec(spec: str) -> Dict[str, object]:
+    """Parse a comma-separated layers spec into a KAS ``layers`` mapping.
+
+    Each entry is ``<layer>[:<qualifier>]`` where *layer* is a repo-relative
+    directory (``.`` for the repo root) and *qualifier* is ``disabled`` or an
+    integer layer priority.  Entries without a qualifier map to ``None``
+    (enabled), matching the KAS ``repos.<name>.layers`` schema::
+
+        meta-foo,meta-bar      -> {"meta-foo": None, "meta-bar": None}
+        meta-foo:disabled      -> {"meta-foo": "disabled"}
+        meta-foo:7,.           -> {"meta-foo": 7, ".": None}
+
+    Raises:
+        SystemExit: If the spec is empty or contains invalid entries.
+    """
+    layers: Dict[str, object] = {}
+    entries = [e.strip() for e in spec.split(",")]
+    for entry in entries:
+        if not entry:
+            logging.error(
+                "Invalid layers spec '%s': empty layer entry. "
+                "Use '<layer>[:disabled|<priority>]' entries separated by commas.",
+                spec,
+            )
+            sys.exit(1)
+        layer, sep, qualifier = entry.partition(":")
+        layer = layer.strip()
+        qualifier = qualifier.strip()
+        if not layer:
+            logging.error("Invalid layers spec '%s': missing layer name.", spec)
+            sys.exit(1)
+        if Path(layer).is_absolute() or layer.startswith(".."):
+            logging.error(
+                "Invalid layer '%s': must be a repo-relative directory "
+                "(e.g. 'meta-foo' or '.').", layer,
+            )
+            sys.exit(1)
+        if not sep:
+            layers[layer] = None
+        elif qualifier == "disabled":
+            layers[layer] = "disabled"
+        else:
+            try:
+                prio = int(qualifier)
+            except ValueError:
+                logging.error(
+                    "Invalid layer qualifier '%s' for layer '%s'. "
+                    "Use 'disabled' or an integer priority.", qualifier, layer,
+                )
+                sys.exit(1)
+            if not -99 <= prio <= 99:
+                logging.error(
+                    "Invalid layer priority %d for layer '%s': "
+                    "must be between -99 and 99.", prio, layer,
+                )
+                sys.exit(1)
+            layers[layer] = prio
+    if not layers:
+        logging.error("Invalid layers spec '%s': no layers given.", spec)
+        sys.exit(1)
+    return layers
+
+
 # ---------------------------------------------------------------------------
 # Manager
 # ---------------------------------------------------------------------------
@@ -405,6 +489,7 @@ class OverlayManager:
         name: str,
         description: str = "",
         repo_specs: Optional[List[str]] = None,
+        layers: Optional[Dict[str, object]] = None,
     ) -> OverlayEntry:
         """Create a new overlay.
 
@@ -413,12 +498,15 @@ class OverlayManager:
             description: Optional free-form description.
             repo_specs:  Optional list of ``<repo>@<refspec>`` /
                          ``<repo>=<url>[@<refspec>]`` specs applied initially.
+            layers:      Optional KAS layers mapping applied to the repo given
+                         via *repo_specs* (requires exactly one spec).
 
         Returns:
             The newly created :class:`OverlayEntry`.
 
         Raises:
-            SystemExit: If an overlay with *name* already exists.
+            SystemExit: If an overlay with *name* already exists, or *layers*
+                        is given without exactly one repo spec.
         """
         overlays = self.load()
         if any(o.name == name for o in overlays):
@@ -427,9 +515,18 @@ class OverlayManager:
                 name,
             )
             sys.exit(1)
+        if layers and len(repo_specs or []) != 1:
+            logging.error(
+                "--layers requires exactly one --repo spec (got %d). "
+                "Use 'bsp overlay set-layers' to set layers per repo.",
+                len(repo_specs or []),
+            )
+            sys.exit(1)
         entry = OverlayEntry(name=name, description=description)
         for spec in repo_specs or []:
             repo, override = parse_repo_spec(spec)
+            if layers:
+                override.layers = layers
             entry.repos[repo] = override
         overlays.append(entry)
         self.save(overlays)
@@ -463,12 +560,18 @@ class OverlayManager:
         self._print_available(overlays)
         sys.exit(1)
 
-    def set_repo(self, name: str, spec: str) -> OverlayEntry:
+    def set_repo(
+        self,
+        name: str,
+        spec: str,
+        layers: Optional[Dict[str, object]] = None,
+    ) -> OverlayEntry:
         """Set (or replace) a repository override on an overlay.
 
         Args:
-            name: Overlay name.
-            spec: ``<repo>@<refspec>`` or ``<repo>=<url>[@<refspec>]`` spec.
+            name:   Overlay name.
+            spec:   ``<repo>@<refspec>`` or ``<repo>=<url>[@<refspec>]`` spec.
+            layers: Optional KAS layers mapping stored with the override.
 
         Returns:
             The updated :class:`OverlayEntry`.
@@ -477,14 +580,22 @@ class OverlayManager:
             SystemExit: If no overlay with *name* exists or the spec is invalid.
         """
         repo, override = parse_repo_spec(spec)
+        if layers:
+            override.layers = layers
         return self._update(name, repo, override)
 
-    def set_path(self, name: str, spec: str) -> OverlayEntry:
+    def set_path(
+        self,
+        name: str,
+        spec: str,
+        layers: Optional[Dict[str, object]] = None,
+    ) -> OverlayEntry:
         """Point a repository at a local checkout directory.
 
         Args:
-            name: Overlay name.
-            spec: ``<repo>=<local-path>`` spec.
+            name:   Overlay name.
+            spec:   ``<repo>=<local-path>`` spec.
+            layers: Optional KAS layers mapping stored with the override.
 
         Returns:
             The updated :class:`OverlayEntry`.
@@ -493,7 +604,55 @@ class OverlayManager:
             SystemExit: If no overlay with *name* exists or the spec is invalid.
         """
         repo, path = parse_path_spec(spec)
-        return self._update(name, repo, RepoOverride(path=path))
+        return self._update(name, repo, RepoOverride(path=path, layers=layers or None))
+
+    def set_layers(self, name: str, repo: str, layers: Dict[str, object]) -> OverlayEntry:
+        """Set (or replace) the layers mapping for *repo* on an overlay.
+
+        A layers-only override is valid: the layers merge onto the
+        registry-defined repo without changing its URL/refspec.
+
+        Raises:
+            SystemExit: If no overlay with *name* exists.
+        """
+        overlays = self.load()
+        for o in overlays:
+            if o.name == name:
+                override = o.repos.get(repo) or RepoOverride()
+                override.layers = layers
+                o.repos[repo] = override
+                self.save(overlays)
+                return o
+        logging.error("Overlay '%s' not found.", name)
+        self._print_available(overlays)
+        sys.exit(1)
+
+    def unset_layers(self, name: str, repo: str) -> OverlayEntry:
+        """Remove the layers mapping for *repo* from an overlay.
+
+        If the override has no other fields set, the whole repo override is
+        removed.
+
+        Raises:
+            SystemExit: If the overlay, repo override, or layers do not exist.
+        """
+        overlays = self.load()
+        for o in overlays:
+            if o.name == name:
+                override = o.repos.get(repo)
+                if override is None or override.layers is None:
+                    logging.error(
+                        "Overlay '%s' has no layers for repo '%s'.", name, repo
+                    )
+                    sys.exit(1)
+                override.layers = None
+                if not override.to_dict():
+                    del o.repos[repo]
+                self.save(overlays)
+                return o
+        logging.error("Overlay '%s' not found.", name)
+        self._print_available(overlays)
+        sys.exit(1)
 
     def unset_repo(self, name: str, repo: str) -> OverlayEntry:
         """Remove the override for *repo* from an overlay.
@@ -650,6 +809,12 @@ Manage the overlay with `bsp overlay show {name}`,
         (null removes a default value), but ``commit`` must be a string, so
         an empty string is used to clear it (KAS treats a falsy commit as
         unset).
+
+        A ``layers`` mapping is emitted verbatim for any override kind
+        (URL/refspec, path, or layers-only), except that integer priorities
+        are expanded to the KAS schema form ``{"prio": <int>}``.  KAS merges
+        layer keys, so an overlay can add layers or disable registry-defined
+        ones (value ``"disabled"``), but omitted registry layers stay active.
         """
         repos: dict = {}
         for repo_name, ov in entry.repos.items():
@@ -670,6 +835,11 @@ Manage the overlay with `bsp overlay show {name}`,
                     repo_cfg["branch"] = ov.branch
                     repo_cfg["tag"] = ov.tag
                     repo_cfg["commit"] = ov.commit or ""
+            if ov.layers:
+                repo_cfg["layers"] = {
+                    layer: {"prio": value} if isinstance(value, int) and not isinstance(value, bool) else value
+                    for layer, value in ov.layers.items()
+                }
             repos[repo_name] = repo_cfg
         return {
             "header": {"version": KAS_OVERLAY_HEADER_VERSION},

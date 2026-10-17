@@ -309,6 +309,16 @@ bsp overlay set-repo modular-bsp-dev meta-imx@commit:<sha>
 bsp overlay set-path modular-bsp-dev \
   meta-modular-bsp-nxp=~/src/meta-modular-bsp-nxp
 
+# Select which Yocto layers inside the overridden repo are used
+# (KAS 'layers' mapping; '.' = repo root)
+bsp overlay add multi-layer-dev \
+  --repo meta-multi@feature/foo \
+  --layers meta-core,meta-extras:disabled,.
+bsp overlay set-repo modular-bsp-dev meta-imx@fix/display --layers meta-imx-bsp
+bsp overlay set-path modular-bsp-dev meta-multi=~/src/meta-multi --layers meta-a,meta-b
+bsp overlay set-layers modular-bsp-dev meta-imx=meta-imx-bsp,meta-imx-demos:disabled
+bsp overlay unset-layers modular-bsp-dev meta-imx
+
 # Inspect and manage overlays
 bsp overlay list
 bsp overlay show modular-bsp-dev
@@ -330,6 +340,15 @@ For traceability, the generated fragment is kept under
 (`build-manifest.json`) records the overlay name, description, fragment path,
 and repository overrides in its `overlay` section (plus a
 `build.overlay_used` flag).
+
+Each `--layers` entry is `<layer>[:<qualifier>]` where *layer* is a
+repo-relative directory (`.` for the repo root) and the qualifier is
+`disabled` (exclude the layer from `bblayers.conf`) or an integer include
+priority (−99…99, emitted as the KAS `{prio: N}` form).  Without a `layers`
+mapping, KAS uses the repo root itself as the layer.  Note that KAS merges
+layer keys across config files, so an overlay can add layers or change their
+qualifiers, but a layer defined by the registry stays active unless you
+explicitly list it with `:disabled`.
 
 #### Registry overlays
 

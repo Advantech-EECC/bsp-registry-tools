@@ -378,6 +378,17 @@ bsp overlay set-repo <name> meta-x@tag:v1.2      # pin to a tag
 bsp overlay set-repo <name> meta-x@commit:<sha>  # pin to a commit
 bsp overlay set-path <name> meta-x=~/src/meta-x  # use local checkout in-place
 
+# Yocto layer selection (KAS 'layers' mapping; '.' = repo root):
+#   entries are <layer>[:disabled|<prio>] — 'disabled' excludes the layer,
+#   an integer sets the include priority (-99..99).  KAS merges layer keys,
+#   so registry-defined layers stay active unless listed with ':disabled'.
+bsp overlay add <name> --repo meta-x@feature/foo \
+  --layers meta-core,meta-extras:disabled,.      # layers with the initial repo
+bsp overlay set-repo <name> meta-x@ref --layers meta-a,meta-b
+bsp overlay set-path <name> meta-x=~/src/meta-x --layers meta-a:7
+bsp overlay set-layers <name> meta-x=meta-a,meta-b:disabled  # layers only
+bsp overlay unset-layers <name> meta-x           # drop the layers mapping
+
 bsp overlay show <name>                          # show details
 bsp overlay unset-repo <name> meta-x             # drop one repo override
 bsp overlay remove <name>                        # remove an overlay

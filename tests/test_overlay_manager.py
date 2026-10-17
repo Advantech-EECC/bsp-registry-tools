@@ -15,6 +15,7 @@ from bsp.overlay_manager import (
     OverlayEntry,
     OverlayManager,
     RepoOverride,
+    parse_layers_spec,
     parse_path_spec,
     parse_repo_spec,
 )
@@ -188,6 +189,48 @@ class TestParsePathSpec:
             parse_path_spec("meta-x=")
 
 
+class TestParseLayersSpec:
+    def test_plain_layers(self):
+        assert parse_layers_spec("meta-foo,meta-bar") == {
+            "meta-foo": None,
+            "meta-bar": None,
+        }
+
+    def test_disabled(self):
+        assert parse_layers_spec("meta-foo:disabled") == {"meta-foo": "disabled"}
+
+    def test_priority_and_dot(self):
+        assert parse_layers_spec("meta-foo:7,.") == {"meta-foo": 7, ".": None}
+
+    def test_whitespace_tolerated(self):
+        assert parse_layers_spec(" meta-foo , meta-bar:disabled ") == {
+            "meta-foo": None,
+            "meta-bar": "disabled",
+        }
+
+    def test_empty_entry_exits(self):
+        with pytest.raises(SystemExit):
+            parse_layers_spec("meta-foo,,meta-bar")
+        with pytest.raises(SystemExit):
+            parse_layers_spec("")
+
+    def test_missing_layer_name_exits(self):
+        with pytest.raises(SystemExit):
+            parse_layers_spec(":disabled")
+
+    def test_absolute_path_exits(self):
+        with pytest.raises(SystemExit):
+            parse_layers_spec("/abs/meta-foo")
+
+    def test_parent_dir_exits(self):
+        with pytest.raises(SystemExit):
+            parse_layers_spec("../meta-foo")
+
+    def test_unknown_qualifier_exits(self):
+        with pytest.raises(SystemExit):
+            parse_layers_spec("meta-foo:sometimes")
+
+
 # ---------------------------------------------------------------------------
 # OverlayManager unit tests
 # ---------------------------------------------------------------------------
@@ -277,6 +320,103 @@ class TestOverlayManagerCrud:
         loaded = OverlayManager(config_path=overlays_config).load()
         assert loaded[0].repos["meta-imx"].branch == "main"
 
+    def test_add_with_layers(self, mgr):
+        entry = mgr.add(
+            "dev",
+            repo_specs=["meta-imx@main"],
+            layers={"meta-foo": None, "meta-bar": "disabled"},
+        )
+        assert entry.repos["meta-imx"].layers == {
+            "meta-foo": None,
+            "meta-bar": "disabled",
+        }
+
+    def test_add_layers_requires_exactly_one_repo(self, mgr):
+        with pytest.raises(SystemExit):
+            mgr.add("dev", layers={"meta-foo": None})
+        with pytest.raises(SystemExit):
+            mgr.add(
+                "dev2",
+                repo_specs=["meta-a@main", "meta-b@main"],
+                layers={"meta-foo": None},
+            )
+
+    def test_set_repo_with_layers(self, mgr):
+        mgr.add("dev")
+        entry = mgr.set_repo("dev", "meta-imx@main", layers={"meta-foo": 7})
+        assert entry.repos["meta-imx"].branch == "main"
+        assert entry.repos["meta-imx"].layers == {"meta-foo": 7}
+
+    def test_set_path_with_layers(self, mgr, tmp_path):
+        mgr.add("dev")
+        entry = mgr.set_path("dev", f"meta-x={tmp_path}", layers={".": None})
+        assert entry.repos["meta-x"].path == str(tmp_path.resolve())
+        assert entry.repos["meta-x"].layers == {".": None}
+
+    def test_set_layers_on_existing_override_keeps_fields(self, mgr):
+        mgr.add("dev", repo_specs=["meta-imx@main"])
+        entry = mgr.set_layers("dev", "meta-imx", {"meta-foo": None})
+        assert entry.repos["meta-imx"].branch == "main"
+        assert entry.repos["meta-imx"].layers == {"meta-foo": None}
+
+    def test_set_layers_creates_layers_only_override(self, mgr):
+        mgr.add("dev")
+        entry = mgr.set_layers("dev", "meta-imx", {"meta-foo": None})
+        ov = entry.repos["meta-imx"]
+        assert ov.layers == {"meta-foo": None}
+        assert ov.url is None and ov.branch is None and ov.path is None
+
+    def test_unset_layers_keeps_other_fields(self, mgr):
+        mgr.add("dev", repo_specs=["meta-imx@main"], layers={"meta-foo": None})
+        entry = mgr.unset_layers("dev", "meta-imx")
+        assert entry.repos["meta-imx"].branch == "main"
+        assert entry.repos["meta-imx"].layers is None
+
+    def test_unset_layers_removes_layers_only_override(self, mgr):
+        mgr.add("dev")
+        mgr.set_layers("dev", "meta-imx", {"meta-foo": None})
+        entry = mgr.unset_layers("dev", "meta-imx")
+        assert "meta-imx" not in entry.repos
+
+    def test_unset_layers_without_layers_exits(self, mgr):
+        mgr.add("dev", repo_specs=["meta-imx@main"])
+        with pytest.raises(SystemExit):
+            mgr.unset_layers("dev", "meta-imx")
+
+    def test_layers_persistence_roundtrip(self, mgr, overlays_config):
+        mgr.add(
+            "dev",
+            repo_specs=["meta-imx@main"],
+            layers={"meta-foo": None, "meta-bar": "disabled", "meta-baz": 7},
+        )
+        data = yaml.safe_load(overlays_config.read_text())
+        assert data["overlays"][0]["repos"]["meta-imx"]["layers"] == {
+            "meta-foo": None,
+            "meta-bar": "disabled",
+            "meta-baz": 7,
+        }
+        loaded = OverlayManager(config_path=overlays_config).load()
+        assert loaded[0].repos["meta-imx"].layers == {
+            "meta-foo": None,
+            "meta-bar": "disabled",
+            "meta-baz": 7,
+        }
+
+    def test_overlays_without_layers_still_load(self, mgr, overlays_config):
+        # Backward compatibility: files written before layers existed.
+        mgr.add("dev", repo_specs=["meta-imx@main"])
+        loaded = OverlayManager(config_path=overlays_config).load()
+        assert loaded[0].repos["meta-imx"].layers is None
+
+    def test_describe_layers(self):
+        ov = RepoOverride(
+            branch="main",
+            layers={"meta-foo": None, "meta-bar": "disabled", "meta-baz": 7},
+        )
+        desc = ov.describe()
+        assert "branch=main" in desc
+        assert "layers=meta-foo,meta-bar(disabled),meta-baz(7)" in desc
+
 
 # ---------------------------------------------------------------------------
 # KAS overlay YAML generation
@@ -328,11 +468,44 @@ class TestOverlayKasGeneration:
             "meta-imx": RepoOverride(
                 url="https://user@example.com/org/_git/meta-imx",
                 branch="feature/x",
+                layers={"meta-imx-bsp": None, "meta-imx-demos": "disabled", ".": 7},
             ),
             "meta-local": RepoOverride(path="/home/user/src/meta-local"),
+            "meta-layers-only": RepoOverride(layers={"meta-extra": None}),
         })
         cfg = OverlayManager.build_overlay_kas_config(entry)
         jsonschema.validate(cfg, schema)
+
+    def test_layers_emitted_for_url_override(self):
+        entry = OverlayEntry(name="dev", repos={
+            "meta-imx": RepoOverride(
+                branch="main",
+                layers={"meta-foo": None, "meta-bar": "disabled"},
+            ),
+        })
+        repo = OverlayManager.build_overlay_kas_config(entry)["repos"]["meta-imx"]
+        assert repo["branch"] == "main"
+        assert repo["layers"] == {"meta-foo": None, "meta-bar": "disabled"}
+
+    def test_layers_emitted_for_path_override(self):
+        entry = OverlayEntry(name="dev", repos={
+            "meta-x": RepoOverride(path="/src/meta-x", layers={".": None}),
+        })
+        repo = OverlayManager.build_overlay_kas_config(entry)["repos"]["meta-x"]
+        assert repo["path"] == "/src/meta-x"
+        assert repo["layers"] == {".": None}
+
+    def test_layers_only_override_produces_layers_entry(self):
+        entry = OverlayEntry(name="dev", repos={
+            "meta-imx": RepoOverride(layers={"meta-foo": 5}),
+        })
+        repo = OverlayManager.build_overlay_kas_config(entry)["repos"]["meta-imx"]
+        # Integer priorities are expanded to the KAS schema form {"prio": N}.
+        assert repo == {"layers": {"meta-foo": {"prio": 5}}}
+
+    def test_priority_out_of_range_exits(self):
+        with pytest.raises(SystemExit):
+            parse_layers_spec("meta-foo:100")
 
     def test_generate_yaml_file(self, mgr, tmp_path):
         entry = OverlayEntry(name="dev", repos={
@@ -433,7 +606,8 @@ class TestBspManagerOverlayIntegration:
             description="Local work",
             repos={
                 "meta-imx": RepoOverride(
-                    url="https://example.com/meta-imx.git", branch="feature/x"
+                    url="https://example.com/meta-imx.git", branch="feature/x",
+                    layers={"meta-imx-bsp": None, "meta-imx-demos": "disabled"},
                 ),
             },
         )
@@ -458,6 +632,10 @@ class TestBspManagerOverlayIntegration:
         assert ov["fragment"] and "overlays/" in ov["fragment"]
         assert ov["repos"]["meta-imx"]["url"] == "https://example.com/meta-imx.git"
         assert ov["repos"]["meta-imx"]["branch"] == "feature/x"
+        assert ov["repos"]["meta-imx"]["layers"] == {
+            "meta-imx-bsp": None,
+            "meta-imx-demos": "disabled",
+        }
         # The referenced fragment survives the build for traceability
         overlays_dir = output_dir / "overlays"
         assert (overlays_dir / "bsp_overlay_dev.yml").exists()
@@ -545,6 +723,72 @@ class TestOverlayCli:
         with patch("sys.argv", ["bsp", "overlay"]):
             assert bsp.main() == 0
         assert "dev" in capsys.readouterr().out
+
+    def test_add_with_layers(self, overlays_config, capsys):
+        with patch("sys.argv", [
+            "bsp", "overlay", "add", "dev",
+            "--repo", "meta-imx@main",
+            "--layers", "meta-foo,meta-bar:disabled,.:7",
+        ]):
+            assert bsp.main() == 0
+        entry = OverlayManager(config_path=overlays_config).get("dev")
+        assert entry.repos["meta-imx"].layers == {
+            "meta-foo": None,
+            "meta-bar": "disabled",
+            ".": 7,
+        }
+
+    def test_add_layers_without_single_repo_fails(self, overlays_config):
+        with patch("sys.argv", [
+            "bsp", "overlay", "add", "dev", "--layers", "meta-foo",
+        ]):
+            assert bsp.main() != 0
+
+    def test_set_repo_with_layers(self, overlays_config, capsys):
+        with patch("sys.argv", ["bsp", "overlay", "add", "dev"]):
+            assert bsp.main() == 0
+        with patch("sys.argv", [
+            "bsp", "overlay", "set-repo", "dev", "meta-imx@main",
+            "--layers", "meta-foo",
+        ]):
+            assert bsp.main() == 0
+        entry = OverlayManager(config_path=overlays_config).get("dev")
+        assert entry.repos["meta-imx"].branch == "main"
+        assert entry.repos["meta-imx"].layers == {"meta-foo": None}
+
+    def test_set_path_with_layers(self, overlays_config, tmp_path, capsys):
+        with patch("sys.argv", ["bsp", "overlay", "add", "dev"]):
+            assert bsp.main() == 0
+        with patch("sys.argv", [
+            "bsp", "overlay", "set-path", "dev", f"meta-x={tmp_path}",
+            "--layers", "meta-a,meta-b",
+        ]):
+            assert bsp.main() == 0
+        entry = OverlayManager(config_path=overlays_config).get("dev")
+        assert entry.repos["meta-x"].path == str(tmp_path.resolve())
+        assert entry.repos["meta-x"].layers == {"meta-a": None, "meta-b": None}
+
+    def test_set_layers_and_unset_layers(self, overlays_config, capsys):
+        with patch("sys.argv", ["bsp", "overlay", "add", "dev"]):
+            assert bsp.main() == 0
+        with patch("sys.argv", [
+            "bsp", "overlay", "set-layers", "dev", "meta-imx=meta-foo:disabled",
+        ]):
+            assert bsp.main() == 0
+        mgr = OverlayManager(config_path=overlays_config)
+        assert mgr.get("dev").repos["meta-imx"].layers == {"meta-foo": "disabled"}
+        out = capsys.readouterr().out
+        assert "layers=meta-foo(disabled)" in out
+
+        with patch("sys.argv", ["bsp", "overlay", "unset-layers", "dev", "meta-imx"]):
+            assert bsp.main() == 0
+        assert "meta-imx" not in mgr.get("dev").repos
+
+    def test_set_layers_invalid_spec_fails(self, overlays_config):
+        with patch("sys.argv", ["bsp", "overlay", "add", "dev"]):
+            assert bsp.main() == 0
+        with patch("sys.argv", ["bsp", "overlay", "set-layers", "dev", "meta-imx"]):
+            assert bsp.main() == 1
 
     def test_build_with_overlay_flag_passes_overlay_to_manager(
         self, overlays_config, registry_file

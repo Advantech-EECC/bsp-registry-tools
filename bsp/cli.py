@@ -22,7 +22,7 @@ from .completions import (
 )
 from .exceptions import COLORAMA_AVAILABLE, ColoramaFormatter
 from .models import ArchiveConfig, IndexConfig, YoctoCacheConfig
-from .overlay_manager import OverlayManager
+from .overlay_manager import OverlayManager, parse_layers_spec
 from .registry_fetcher import DEFAULT_BRANCH, DEFAULT_REMOTE_URL, RegistryFetcher
 from .remotes_manager import RemotesManager
 from .utils import SUPPORTED_REGISTRY_VERSION, get_installed_package_version
@@ -443,10 +443,12 @@ def _dispatch_overlay(args) -> int:
         return 0
 
     if subcmd == "add":
+        layers_spec = getattr(args, "layers", None)
         entry = mgr.add(
             name=args.name,
             description=getattr(args, "description", "") or "",
             repo_specs=getattr(args, "repo", None) or [],
+            layers=parse_layers_spec(layers_spec) if layers_spec else None,
         )
         print(f"Added overlay '{entry.name}' with {len(entry.repos)} repo override(s)")
         return 0
@@ -471,15 +473,43 @@ def _dispatch_overlay(args) -> int:
         return 0
 
     if subcmd == "set-repo":
-        entry = mgr.set_repo(args.name, args.spec)
+        layers_spec = getattr(args, "layers", None)
+        entry = mgr.set_repo(
+            args.name,
+            args.spec,
+            layers=parse_layers_spec(layers_spec) if layers_spec else None,
+        )
         print(f"Updated overlay '{entry.name}':")
         _print_overlay(entry)
         return 0
 
     if subcmd == "set-path":
-        entry = mgr.set_path(args.name, args.spec)
+        layers_spec = getattr(args, "layers", None)
+        entry = mgr.set_path(
+            args.name,
+            args.spec,
+            layers=parse_layers_spec(layers_spec) if layers_spec else None,
+        )
         print(f"Updated overlay '{entry.name}':")
         _print_overlay(entry)
+        return 0
+
+    if subcmd == "set-layers":
+        repo, sep, layers_spec = args.spec.partition("=")
+        if not sep or not repo or not layers_spec:
+            logging.error(
+                "Invalid spec '%s': expected '<repo>=<layers-list>' "
+                "(e.g. 'meta-foo=meta-bar,meta-baz:disabled').", args.spec
+            )
+            return 1
+        entry = mgr.set_layers(args.name, repo, parse_layers_spec(layers_spec))
+        print(f"Updated overlay '{entry.name}':")
+        _print_overlay(entry)
+        return 0
+
+    if subcmd == "unset-layers":
+        entry = mgr.unset_layers(args.name, args.repo)
+        print(f"Removed layers for repo '{args.repo}' from overlay '{entry.name}'")
         return 0
 
     if subcmd == "unset-repo":
@@ -2104,6 +2134,16 @@ def main() -> int:
                 "'meta-x@tag:v1.2', 'meta-x@commit:<sha>'"
             ),
         )
+        overlay_add.add_argument(
+            "--layers",
+            metavar="LAYER[:disabled|PRIO][,...]",
+            default=None,
+            help=(
+                "Layers inside the overridden repo to use (KAS 'layers' mapping); "
+                "requires exactly one --repo.  Examples: 'meta-foo,meta-bar', "
+                "'meta-foo:disabled', 'meta-foo:7,.' ('.' = repo root)"
+            ),
+        )
 
         # bsp overlay remove <name>
         overlay_remove = overlay_subparsers.add_parser(
@@ -2155,6 +2195,15 @@ def main() -> int:
                 "'meta-x@tag:v1.2', 'meta-x@commit:<sha>'"
             ),
         )
+        overlay_set_repo.add_argument(
+            "--layers",
+            metavar="LAYER[:disabled|PRIO][,...]",
+            default=None,
+            help=(
+                "Layers inside the overridden repo to use (KAS 'layers' mapping).  "
+                "Examples: 'meta-foo,meta-bar', 'meta-foo:disabled', 'meta-foo:7,.'"
+            ),
+        )
 
         # bsp overlay set-path <name> <repo>=<local-path>
         overlay_set_path = overlay_subparsers.add_parser(
@@ -2167,6 +2216,39 @@ def main() -> int:
             metavar="REPO=PATH",
             help="Local checkout spec, e.g. 'meta-x=~/src/meta-x'",
         )
+        overlay_set_path.add_argument(
+            "--layers",
+            metavar="LAYER[:disabled|PRIO][,...]",
+            default=None,
+            help=(
+                "Layers inside the local checkout to use (KAS 'layers' mapping).  "
+                "Examples: 'meta-foo,meta-bar', 'meta-foo:disabled', 'meta-foo:7,.'"
+            ),
+        )
+
+        # bsp overlay set-layers <name> <repo>=<layers-list>
+        overlay_set_layers = overlay_subparsers.add_parser(
+            "set-layers",
+            help="Set (or replace) the KAS layers mapping for a repository on an overlay",
+        )
+        overlay_set_layers.add_argument("name", help="Name of the overlay to update").completer = OverlaysCompleter()
+        overlay_set_layers.add_argument(
+            "spec",
+            metavar="REPO=LAYER[:disabled|PRIO][,...]",
+            help=(
+                "Layers spec, e.g. 'meta-x=meta-foo,meta-bar:disabled,.' "
+                "('.' = repo root; 'disabled' excludes a registry-defined layer; "
+                "an integer sets the layer priority)"
+            ),
+        )
+
+        # bsp overlay unset-layers <name> <repo>
+        overlay_unset_layers = overlay_subparsers.add_parser(
+            "unset-layers",
+            help="Remove the KAS layers mapping for a repository from an overlay",
+        )
+        overlay_unset_layers.add_argument("name", help="Name of the overlay to update").completer = OverlaysCompleter()
+        overlay_unset_layers.add_argument("repo", help="Name of the KAS repository whose layers mapping to remove")
 
         # bsp overlay unset-repo <name> <repo>
         overlay_unset_repo = overlay_subparsers.add_parser(

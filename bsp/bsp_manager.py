@@ -1862,6 +1862,7 @@ class BspManager:
                         "tag": ov.tag,
                         "commit": ov.commit,
                         "path": paths.scrub_text(ov.path),
+                        "layers": ov.layers,
                     }
                     for repo_name, ov in self.overlay.repos.items()
                 },
