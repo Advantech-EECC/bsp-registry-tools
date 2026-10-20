@@ -68,6 +68,11 @@ dev = [
 completions = [
     "argcomplete>=3.0",
 ]
+mcp = [
+    # MCP SDK requires Python 3.10+; the rest of the package keeps 3.8 support.
+    # 1.28.1 is the first release without known advisories.
+    "mcp>=1.28.1; python_version >= '3.10'",
+]
 report = [
     # 62.0 is the first release with usable flex/grid handling; the PDF report
     # also relies on target-counter() and @page margin boxes.
@@ -83,6 +88,7 @@ flash = []
 bsp = "bsp.cli:main"
 bsp-explorer = "bsp.gui:main"
 bsp-explorer-web = "bsp.gui:main_web"
+bsp-mcp = "bsp.mcp.server:main"
 
 [project.urls]
 Homepage = "https://github.com/Advantech-EECC/bsp-registry-tools"
@@ -90,7 +96,7 @@ Repository = "https://github.com/Advantech-EECC/bsp-registry-tools"
 Issues = "https://github.com/Advantech-EECC/bsp-registry-tools/issues"
 
 [tool.setuptools]
-packages = ["bsp", "bsp.server", "bsp.storage"]
+packages = ["bsp", "bsp.server", "bsp.storage", "bsp.mcp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

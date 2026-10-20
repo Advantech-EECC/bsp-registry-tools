@@ -39,6 +39,7 @@ bsp shell <bsp_name>       # enter an interactive build-environment shell
 - 🔒 **CRA vulnerability scanning** — scan built images for CVEs and generate SBOMs (CycloneDX/SPDX) with `bsp scan` ([Trivy](https://trivy.dev/) / Syft+Grype)
 - 💾 **SD card / block device flashing** — write Yocto WIC images to an SD card or USB drive with `bsp flash` ([bmap-tools](https://github.com/intel/bmap-tools) for fast, verified flashing)
 - 🔤 **Shell tab completions** — Bash/Zsh/Fish/tcsh completions for commands, presets, devices, releases, and features
+- 🤖 **MCP server for AI agents** — expose builds, scans, HIL tests, failure triage and layer-pin maintenance over the [Model Context Protocol](https://modelcontextprotocol.io/) with `bsp-mcp` (see [docs/mcp-server.md](docs/mcp-server.md))
 
 ## Installation
 
