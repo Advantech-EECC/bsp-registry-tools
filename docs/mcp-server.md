@@ -91,6 +91,52 @@ Remote management tools edit the shared remotes configuration used by new
 `bsp` CLI runs; the running MCP server keeps using the registry it resolved
 at startup.
 
+## Prompts
+
+The server ships ready-made MCP prompts — they appear as slash commands or in
+the prompt picker of MCP clients (VS Code Copilot agent mode, Claude
+Desktop/Code, MCP Inspector) and are the quickest way to test the server with
+a real LLM:
+
+| Prompt | Arguments | What it does |
+| --- | --- | --- |
+| `smoke_test` | — | Exercises every read-only tool (including a deliberate validation error) and reports a pass/fail table |
+| `explore_registry` | — | Lists presets/devices/releases/features, renders a tree, recommends what to build |
+| `validate_preset` | `preset` | `export_config` sanity check + `checkout_only` build, with triage on failure |
+| `build_and_triage` | `preset` | Full build, polite polling, `analyze_build_failure` + task log on failure |
+| `scan_image` | `preset` | CVE scan + `scan_findings` summary with update recommendations |
+| `audit_layer_pins` | — | `check_layer_pins` report; proposes bumps but never applies them unconfirmed |
+
+### Copy-paste test prompts
+
+If your client has no prompt picker, paste these into the chat directly:
+
+* *"Run a smoke test of the bsp MCP server: call every read-only tool, try
+  `export_config` with bsp_name `--clean` to confirm validation works, and
+  give me a table of what passed and failed."* — safe everywhere, touches no
+  hardware and starts no jobs.
+* *"What can I build from this registry? List presets, devices, releases and
+  features and show me a compact tree."*
+* *"Validate the preset `<name>` without building it: export its config,
+  then run a checkout-only build and triage any failure."*
+* *"Build `<name>`. Poll the job status; if it fails, analyze the failure,
+  read the bitbake task log and tell me the root cause and fix."*
+* *"Start a build of `<name>`, then immediately cancel it and confirm the
+  job ends in the `cancelled` state."* — tests job control end to end.
+* *"Check all layer pins against their remote branch heads and tell me which
+  are behind. Don't bump anything yet."*
+* *"Scan the built `<name>` image for CVEs and summarise the findings by
+  severity, highlighting the fixable criticals."*
+* *"Do a dry-run deploy of `<name>`'s artifacts and show me what would be
+  uploaded."* / *"Do a dry-run flash of `<name>` and tell me which image and
+  tool it would use."* — both default to or support `dry_run`, so nothing is
+  written.
+
+Negative tests worth trying: ask for a nonexistent preset or device (expect a
+clear "unknown" error listing alternatives), pass a name starting with `-`
+(expect a validation error, not a crash), and start two builds when
+`--max-jobs` is 1 (expect a refusal naming the running job).
+
 ## Failure categories
 
 `analyze_build_failure` classifies each failure and attaches a one-line hint:

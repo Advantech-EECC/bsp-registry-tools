@@ -403,6 +403,18 @@ class TestEndToEndStdio:
                         "set_remote_url"} <= names
                 assert len(names) == 30
 
+                prompts = await session.list_prompts()
+                prompt_names = {p.name for p in prompts.prompts}
+                assert {"smoke_test", "explore_registry", "validate_preset",
+                        "build_and_triage", "scan_image",
+                        "audit_layer_pins"} <= prompt_names
+                prompt = await session.get_prompt(
+                    "validate_preset", {"preset": "demo-bsp"}
+                )
+                text = prompt.messages[0].content.text
+                assert "demo-bsp" in text
+                assert "checkout_only" in text
+
                 result = await session.call_tool("list_presets", {})
                 assert not _is_error(result)
 

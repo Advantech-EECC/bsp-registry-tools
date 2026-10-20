@@ -889,6 +889,85 @@ def build_server(ctx: ServerContext):
         mgr = _remotes_manager()
         return _remotes_call(mgr.set_url, name, url).to_dict()
 
+    # -- Prompts ----------------------------------------------------------
+    # Ready-made prompts for testing the server from any MCP client (they
+    # appear as slash commands / prompt pickers in Copilot, Claude, etc.).
+
+    @server.prompt(name="smoke_test",
+                   description="Exercise every read-only tool and report "
+                               "which ones work.")
+    def smoke_test() -> str:
+        return (
+            "Run a smoke test of this BSP MCP server using only read-only "
+            "tools. Step by step: 1) call list_presets, list_devices, "
+            "list_releases, list_features and list_containers and summarise "
+            "how many entries each returns; 2) call registry_tree with "
+            "mode='compact' and show the first 20 lines; 3) call list_remotes "
+            "and list_jobs; 4) pick the first preset and call export_config "
+            "for it; 5) deliberately call export_config with bsp_name "
+            "'--clean' and confirm it is rejected with a clear validation "
+            "error. Finish with a table of each tool, whether it succeeded, "
+            "and any error message."
+        )
+
+    @server.prompt(name="explore_registry",
+                   description="Discover what can be built from the registry.")
+    def explore_registry() -> str:
+        return (
+            "Give me an overview of this BSP registry. List all presets, "
+            "devices, releases and optional features, and render a compact "
+            "registry tree. Then recommend which preset or device/release "
+            "combination to build first and why."
+        )
+
+    @server.prompt(name="validate_preset",
+                   description="Cheaply validate a preset before a full build.")
+    def validate_preset(preset: str) -> str:
+        return (
+            f"Validate the BSP preset '{preset}' without doing a full build. "
+            "First call export_config for it and check the resolved KAS YAML "
+            "looks sane (repos, targets, machine). Then start_build with "
+            "checkout_only=true, poll job_status until it finishes, and if it "
+            "fails run analyze_build_failure and explain the root cause and "
+            "the fix."
+        )
+
+    @server.prompt(name="build_and_triage",
+                   description="Run a full build and triage any failure.")
+    def build_and_triage(preset: str) -> str:
+        return (
+            f"Build the BSP preset '{preset}'. Start the build job, then "
+            "poll job_status (builds can take hours — report progress from "
+            "job_log occasionally, don't spam). If it succeeds, summarise "
+            "the job duration and log tail. If it fails, run "
+            "analyze_build_failure, read the relevant bitbake task log via "
+            "read_task_log, and propose a concrete fix. Do not retry more "
+            "than once."
+        )
+
+    @server.prompt(name="scan_image",
+                   description="CVE-scan built artifacts and summarise findings.")
+    def scan_image(preset: str) -> str:
+        return (
+            f"Run a CVE scan for the already-built preset '{preset}' with "
+            "start_scan. Wait for the job to finish, then call scan_findings "
+            "and report: total findings, counts by severity, the fixable "
+            "count, and the top 10 CRITICAL/HIGH findings with their fixed "
+            "versions. Recommend which packages to update first."
+        )
+
+    @server.prompt(name="audit_layer_pins",
+                   description="Check layer pins against remote heads and "
+                               "propose bumps.")
+    def audit_layer_pins() -> str:
+        return (
+            "Audit the layer pins in this registry. Call check_layer_pins "
+            "and report each repo's status (up_to_date, behind, unreachable, "
+            "no_branch_or_url). For every pin that is behind, say which file "
+            "to edit and what the new commit would be, but do NOT call "
+            "bump_layer_pin unless I explicitly confirm."
+        )
+
     return server
 
 
