@@ -157,23 +157,8 @@ class RegistryFetcher:
         return (self.cache_dir / ".git").is_dir()
 
     def _clone(self, repo_url: str, branch: str) -> None:
-        """Clone *repo_url* into the cache directory.
-
-        If the cache directory already exists and is not empty (for example
-        after an interrupted clone, or when it only contains multi-registry
-        subdirectories), ``git clone`` would fail with "destination path
-        already exists".  In that case the repository is initialised in
-        place and the branch is fetched and checked out instead.
-        """
+        """Clone *repo_url* into the cache directory."""
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        if any(self.cache_dir.iterdir()):
-            self.logger.info(
-                "Cache directory %s exists and is not empty – "
-                "initialising git repository in place instead of cloning",
-                self.cache_dir,
-            )
-            self._init_and_fetch(repo_url, branch)
-            return
         cmd = ["git", "clone", "--branch", branch, repo_url, str(self.cache_dir)]
         self.logger.debug("Running: %s", " ".join(cmd))
         try:
@@ -181,47 +166,6 @@ class RegistryFetcher:
         except subprocess.CalledProcessError as e:
             self.logger.error("git clone failed (return code %d): %s", e.returncode, e.stderr)
             sys.exit(1)
-
-    def _init_and_fetch(self, repo_url: str, branch: str) -> None:
-        """Turn an existing non-empty directory into a clone of *repo_url*.
-
-        Runs ``git init``, points ``origin`` at *repo_url*, fetches *branch*
-        and checks it out, leaving any unrelated files in place.
-        """
-        git = ["git", "-C", str(self.cache_dir)]
-        init_cmds = [
-            git + ["init"],
-            git + ["remote", "add", "origin", repo_url],
-        ]
-        for cmd in init_cmds:
-            self.logger.debug("Running: %s", " ".join(cmd))
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0 and cmd[3] == "remote":
-                # 'origin' may already exist (partial clone) – repoint it.
-                cmd = git + ["remote", "set-url", "origin", repo_url]
-                self.logger.debug("Running: %s", " ".join(cmd))
-                result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                self.logger.error(
-                    "git %s failed (return code %d): %s",
-                    cmd[3], result.returncode, result.stderr,
-                )
-                sys.exit(1)
-
-        fetch_cmds = [
-            git + ["fetch", "origin", branch],
-            git + ["checkout", "-f", "-B", branch, f"origin/{branch}"],
-        ]
-        for cmd in fetch_cmds:
-            self.logger.debug("Running: %s", " ".join(cmd))
-            try:
-                subprocess.run(cmd, check=True, capture_output=True, text=True)
-            except subprocess.CalledProcessError as e:
-                self.logger.error(
-                    "git %s failed (return code %d): %s",
-                    cmd[3], e.returncode, e.stderr,
-                )
-                sys.exit(1)
 
     def _pull(self, branch: str) -> None:
         """Fetch from remote, switch to *branch*, and pull latest changes.
