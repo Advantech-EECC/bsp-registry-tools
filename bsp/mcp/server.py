@@ -83,6 +83,9 @@ SCAN_SEVERITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 SCAN_FAIL_ON = ["NONE"] + SCAN_SEVERITIES
 SCAN_TOOLS = ["trivy", "syft+grype"]
 TEST_BACKENDS = ["lava", "direct-local", "direct-ssh", "direct-serial"]
+DEPLOY_PROVIDERS = ["azure", "aws"]
+FLASH_TOOLS = ["bmaptool", "dd", "uuu"]
+TREE_MODES = ["default", "full", "compact"]
 _SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3,
                    "NEGLIGIBLE": 4, "UNKNOWN": 5}
 
@@ -159,6 +162,22 @@ def validate_name(value: str, what: str) -> str:
         raise ValueError(
             f"Invalid {what} '{value}': must match {NAME_RE.pattern} "
             "(letters, digits, '_.+:-'; must not start with '-')"
+        )
+    return value
+
+
+def validate_free_value(value: str, what: str) -> str:
+    """
+    Validate an agent-supplied free-form value (path, URL, prefix template).
+
+    These may legitimately contain '/', '{placeholders}', '@', etc., so only
+    flag injection (leading '-') and control characters are rejected.
+    """
+    if (not isinstance(value, str) or not value or value.startswith("-")
+            or any(ord(c) < 32 or ord(c) == 127 for c in value)):
+        raise ValueError(
+            f"Invalid {what} '{value}': must be non-empty, must not start "
+            "with '-' and must not contain control characters"
         )
     return value
 
@@ -430,6 +449,43 @@ def build_server(ctx: ServerContext):
                 ) from exc
         return buf.getvalue()
 
+    @tool(read_only_ann,
+          "List all container image definitions from the registry "
+          "(name, base image, Dockerfile and build args per registry).")
+    def list_containers() -> List[Dict]:
+        mgr = ctx.manager
+        containers: List[Dict] = []
+        for reg_name, reg_model, _, _ in mgr._iter_registries():
+            reg_containers = (reg_model.containers or {}) if reg_model else {}
+            for name, cfg in reg_containers.items():
+                containers.append({
+                    "registry": reg_name,
+                    "name": name,
+                    "image": cfg.image,
+                    "file": cfg.file,
+                    "args": {a.name: a.value for a in (cfg.args or [])},
+                })
+        return containers
+
+    @tool(read_only_ann,
+          "Render an ASCII tree view of the whole BSP registry hierarchy. "
+          "mode: default | full (includes and descriptions) | compact "
+          "(names/slugs only). remote filters to one named remote registry.")
+    def registry_tree(mode: str = "default", remote: Optional[str] = None) -> str:
+        if mode not in TREE_MODES:
+            raise ValueError(f"mode must be one of {TREE_MODES}")
+        if remote:
+            validate_name(remote, "remote")
+        mgr = ctx.manager
+        with _capture() as buf:
+            try:
+                mgr.tree_bsp(use_color=False, mode=mode, registry_filter=remote)
+            except SystemExit as exc:
+                raise ValueError(
+                    "Tree rendering failed: " + (buf.getvalue().strip() or str(exc))
+                ) from exc
+        return buf.getvalue()
+
     # -- Jobs -----------------------------------------------------------
 
     @tool(job_ann,
@@ -506,6 +562,135 @@ def build_server(ctx: ServerContext):
         if backend == "lava" and lava_server:
             cmd += ["--lava-server", lava_server]
         job = ctx.jobs.start("test", bsp_name or f"{device}/{release}", cmd)
+        return job.summary()
+
+    @tool(job_ann,
+          "Fetch (download) all sources for a BSP configuration as a "
+          "background job, without building. Cheaper than a build for "
+          "pre-warming caches or validating that all sources resolve.")
+    def start_fetch(
+        bsp_name: Optional[str] = None,
+        device: Optional[str] = None,
+        release: Optional[str] = None,
+        features: Optional[List[str]] = None,
+    ) -> Dict:
+        ctx.require_writable("start_fetch")
+        sel = selection_args(bsp_name, device, release, features)
+        cmd = ctx.cli_command() + ["fetch"] + sel
+        job = ctx.jobs.start("fetch", bsp_name or f"{device}/{release}", cmd)
+        return job.summary()
+
+    @tool(job_ann,
+          "Deploy previously built artifacts to cloud storage (Azure Blob or "
+          "AWS S3) as a background job. Credentials come from the registry/"
+          "environment, never from tool arguments. Use dry_run=true first to "
+          "list what would be uploaded.")
+    def start_deploy(
+        bsp_name: Optional[str] = None,
+        device: Optional[str] = None,
+        release: Optional[str] = None,
+        features: Optional[List[str]] = None,
+        provider: Optional[str] = None,
+        container: Optional[str] = None,
+        prefix: Optional[str] = None,
+        dry_run: bool = False,
+    ) -> Dict:
+        ctx.require_writable("start_deploy")
+        if provider is not None and provider not in DEPLOY_PROVIDERS:
+            raise ValueError(f"provider must be one of {DEPLOY_PROVIDERS}")
+        sel = selection_args(bsp_name, device, release, features)
+        cmd = ctx.cli_command() + ["deploy"] + sel
+        if provider:
+            cmd += ["--provider", provider]
+        if container:
+            cmd += ["--container", validate_name(container, "container")]
+        if prefix:
+            cmd += ["--prefix", validate_free_value(prefix, "prefix")]
+        if dry_run:
+            cmd.append("--dry-run")
+        job = ctx.jobs.start("deploy", bsp_name or f"{device}/{release}", cmd)
+        return job.summary()
+
+    @tool(job_ann,
+          "Download (gather) previously deployed artifacts from cloud "
+          "storage as a background job. dest_dir defaults to the registry's "
+          "build path; use dry_run=true first to list what would be "
+          "downloaded.")
+    def start_gather(
+        bsp_name: Optional[str] = None,
+        device: Optional[str] = None,
+        release: Optional[str] = None,
+        features: Optional[List[str]] = None,
+        provider: Optional[str] = None,
+        container: Optional[str] = None,
+        prefix: Optional[str] = None,
+        dest_dir: Optional[str] = None,
+        dry_run: bool = False,
+    ) -> Dict:
+        ctx.require_writable("start_gather")
+        if provider is not None and provider not in DEPLOY_PROVIDERS:
+            raise ValueError(f"provider must be one of {DEPLOY_PROVIDERS}")
+        sel = selection_args(bsp_name, device, release, features)
+        cmd = ctx.cli_command() + ["gather"] + sel
+        if provider:
+            cmd += ["--provider", provider]
+        if container:
+            cmd += ["--container", validate_name(container, "container")]
+        if prefix:
+            cmd += ["--prefix", validate_free_value(prefix, "prefix")]
+        if dest_dir:
+            cmd += ["--dest-dir", validate_free_value(dest_dir, "dest_dir")]
+        if dry_run:
+            cmd.append("--dry-run")
+        job = ctx.jobs.start("gather", bsp_name or f"{device}/{release}", cmd)
+        return job.summary()
+
+    @tool(destructive_ann,
+          "Flash a built image to a block device as a background job. "
+          "DESTRUCTIVE: overwrites the target device. target is the block "
+          "device path (e.g. /dev/sdb); ALWAYS run with dry_run=true first "
+          "and confirm the device with the user before flashing for real.")
+    def start_flash(
+        bsp_name: Optional[str] = None,
+        device: Optional[str] = None,
+        release: Optional[str] = None,
+        features: Optional[List[str]] = None,
+        target: Optional[str] = None,
+        image_path: Optional[str] = None,
+        flash_tool: Optional[str] = None,
+        dry_run: bool = True,
+    ) -> Dict:
+        ctx.require_writable("start_flash")
+        if flash_tool is not None and flash_tool not in FLASH_TOOLS:
+            raise ValueError(f"flash_tool must be one of {FLASH_TOOLS}")
+        sel = selection_args(bsp_name, device, release, features)
+        cmd = ctx.cli_command() + ["flash"] + sel
+        if target:
+            cmd += ["--target", validate_free_value(target, "target")]
+        if image_path:
+            cmd += ["--image-path", validate_free_value(image_path, "image_path")]
+        if flash_tool:
+            cmd += ["--tool", flash_tool]
+        if dry_run:
+            cmd.append("--dry-run")
+        job = ctx.jobs.start("flash", bsp_name or f"{device}/{release}", cmd)
+        return job.summary()
+
+    @tool(job_ann,
+          "Build container image(s) defined in the registry as a background "
+          "job. Omit container_name to build all; no_cache disables the "
+          "Docker layer cache.")
+    def start_container_build(
+        container_name: Optional[str] = None,
+        no_cache: bool = False,
+    ) -> Dict:
+        ctx.require_writable("start_container_build")
+        cmd = ctx.cli_command() + ["containers", "build"]
+        if container_name:
+            cmd.append(validate_name(container_name, "container_name"))
+        if no_cache:
+            cmd.append("--docker-no-cache")
+        job = ctx.jobs.start("container_build", container_name or "all", cmd)
         return job.summary()
 
     @tool(read_only_ann, "Get the current status and summary of a job.")
@@ -644,6 +829,65 @@ def build_server(ctx: ServerContext):
         ctx.require_writable("bump_layer_pin")
         validate_name(repo, "repo")
         return pins_mod.bump_pin(ctx.registry_path.parent, file, repo, new_commit)
+
+    # -- Remotes ----------------------------------------------------------
+
+    def _remotes_manager():
+        from bsp.remotes_manager import RemotesManager
+        return RemotesManager()
+
+    def _remotes_call(action, *args, **kwargs):
+        """Run a RemotesManager call, converting SystemExit to ValueError."""
+        with _capture() as buf:
+            try:
+                return action(*args, **kwargs)
+            except SystemExit as exc:
+                raise ValueError(
+                    buf.getvalue().strip() or f"Remotes operation failed: {exc}"
+                ) from exc
+
+    @tool(read_only_ann,
+          "List the configured named remote registries (the first one is the "
+          "default, like git's 'origin').")
+    def list_remotes() -> List[Dict]:
+        return [r.to_dict() for r in _remotes_manager().ensure_default_remote()]
+
+    @tool(job_ann,
+          "Add a named remote registry (git URL + branch). Takes effect for "
+          "new bsp CLI runs; this server keeps using the registry it "
+          "resolved at startup.")
+    def add_remote(name: str, url: str, branch: str = "main") -> Dict:
+        ctx.require_writable("add_remote")
+        validate_name(name, "name")
+        validate_free_value(url, "url")
+        validate_name(branch, "branch")
+        mgr = _remotes_manager()
+        return _remotes_call(mgr.add, name, url, branch).to_dict()
+
+    @tool(destructive_ann,
+          "Remove a named remote registry from the remotes configuration.")
+    def remove_remote(name: str) -> Dict:
+        ctx.require_writable("remove_remote")
+        validate_name(name, "name")
+        mgr = _remotes_manager()
+        _remotes_call(mgr.remove, name)
+        return {"removed": name}
+
+    @tool(job_ann, "Rename a configured remote registry.")
+    def rename_remote(old_name: str, new_name: str) -> Dict:
+        ctx.require_writable("rename_remote")
+        validate_name(old_name, "old_name")
+        validate_name(new_name, "new_name")
+        mgr = _remotes_manager()
+        return _remotes_call(mgr.rename, old_name, new_name).to_dict()
+
+    @tool(job_ann, "Change the git URL of a configured remote registry.")
+    def set_remote_url(name: str, url: str) -> Dict:
+        ctx.require_writable("set_remote_url")
+        validate_name(name, "name")
+        validate_free_value(url, "url")
+        mgr = _remotes_manager()
+        return _remotes_call(mgr.set_url, name, url).to_dict()
 
     return server
 

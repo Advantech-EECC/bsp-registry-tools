@@ -56,9 +56,16 @@ Without `--registry` the remote registry is fetched and cached automatically
 | `list_releases` | read-only | Releases, optionally filtered by device (vendor-aware) |
 | `list_features` | read-only | Optional BSP features |
 | `export_config` | read-only | Resolved KAS YAML for `bsp_name` or `device`+`release` |
+| `list_containers` | read-only | Container image definitions from the registry |
+| `registry_tree` | read-only | ASCII tree view of the registry (`default`, `full` or `compact`) |
 | `start_build` | job | Start a build (or `checkout_only` validation) and return a job id |
+| `start_fetch` | job | Fetch all sources without building (cache pre-warm / validation) |
 | `start_scan` | job | Start a CVE scan / SBOM generation (`trivy` or `syft+grype`) |
 | `start_hil_test` | job | Start a HIL test run (`lava`, `direct-local`, `direct-ssh`, `direct-serial`) |
+| `start_deploy` | job | Upload built artifacts to Azure Blob / AWS S3 (`dry_run` supported) |
+| `start_gather` | job | Download deployed artifacts from cloud storage (`dry_run` supported) |
+| `start_flash` | destructive | Flash a built image to a block device (`dry_run` defaults to **true**) |
+| `start_container_build` | job | Build one or all registry-defined container images |
 | `job_status` | read-only | State, return code, duration and log path of a job |
 | `list_jobs` | read-only | All known jobs, including finished and lost ones |
 | `job_log` | read-only | Tail of a job's combined output (1..2000 lines, optional regex filter) |
@@ -69,10 +76,20 @@ Without `--registry` the remote registry is fetched and cached automatically
 | `list_layer_pins` | read-only | Every `repos.<name>` commit pin across the registry YAML files |
 | `check_layer_pins` | read-only | Compare pins with remote branch heads via `git ls-remote` |
 | `bump_layer_pin` | destructive | Textually bump a pin in the working tree (comments preserved) |
+| `list_remotes` | read-only | Configured named remote registries (first = default, like `origin`) |
+| `add_remote` | write | Add a named remote registry (URL + branch) |
+| `remove_remote` | destructive | Remove a named remote registry |
+| `rename_remote` | write | Rename a configured remote registry |
+| `set_remote_url` | write | Change the git URL of a configured remote registry |
 
-Long-running work never blocks a tool call: `start_build`, `start_scan` and
-`start_hil_test` launch the real `bsp` CLI as a background job and return a
-job id immediately; agents poll `job_status` / `job_log`.
+Long-running work never blocks a tool call: `start_build`, `start_fetch`,
+`start_scan`, `start_hil_test`, `start_deploy`, `start_gather`, `start_flash`
+and `start_container_build` launch the real `bsp` CLI as a background job and
+return a job id immediately; agents poll `job_status` / `job_log`.
+
+Remote management tools edit the shared remotes configuration used by new
+`bsp` CLI runs; the running MCP server keeps using the registry it resolved
+at startup.
 
 ## Failure categories
 

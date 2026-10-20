@@ -30,7 +30,8 @@ DEFAULT_STATE_DIR = Path.home() / ".cache" / "bsp" / "mcp" / "jobs"
 #: non-terminal state after a server restart — its process is gone.
 TERMINAL_STATES = {"succeeded", "failed", "cancelled", "lost"}
 
-JOB_KINDS = {"build", "checkout", "scan", "test"}
+JOB_KINDS = {"build", "checkout", "scan", "test", "fetch", "deploy",
+             "flash", "gather", "container_build"}
 
 
 class JobError(Exception):

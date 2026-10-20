@@ -21,7 +21,7 @@ pytest.importorskip("mcp")
 from bsp.mcp import triage
 from bsp.mcp.jobs import JobError, JobManager
 from bsp.mcp.pins import bump_pin, list_pins
-from bsp.mcp.server import selection_args
+from bsp.mcp.server import selection_args, validate_free_value
 
 # ---------------------------------------------------------------------------
 # Triage
@@ -324,6 +324,35 @@ class TestSelectionArgs:
         ]
 
 
+class TestFreeValue:
+    def test_accepts_paths_urls_and_templates(self):
+        assert validate_free_value("/dev/sdb", "target") == "/dev/sdb"
+        assert validate_free_value("{device}/{release}", "prefix")
+        assert validate_free_value("https://example.com/repo.git", "url")
+
+    def test_rejects_flag_injection(self):
+        with pytest.raises(ValueError, match="Invalid target"):
+            validate_free_value("--force", "target")
+
+    def test_rejects_empty_and_control_chars(self):
+        with pytest.raises(ValueError):
+            validate_free_value("", "prefix")
+        with pytest.raises(ValueError):
+            validate_free_value("a\nb", "prefix")
+
+
+class TestNewJobKinds:
+    @pytest.mark.parametrize(
+        "kind", ["fetch", "deploy", "flash", "gather", "container_build"]
+    )
+    def test_new_kinds_accepted(self, tmp_path, fake_bsp, kind):
+        mgr = JobManager(state_dir=tmp_path / "state")
+        job = mgr.start(kind, "demo", [fake_bsp, "ok"])
+        job = _wait_terminal(mgr, job.id)
+        assert job.kind == kind
+        assert job.state == "succeeded"
+
+
 # ---------------------------------------------------------------------------
 # End-to-end over stdio (needs a real registry)
 # ---------------------------------------------------------------------------
@@ -367,7 +396,12 @@ class TestEndToEndStdio:
                 names = {t.name for t in tools.tools}
                 assert "list_presets" in names
                 assert "start_build" in names
-                assert len(names) == 18
+                assert {"start_fetch", "start_deploy", "start_gather",
+                        "start_flash", "start_container_build",
+                        "list_containers", "registry_tree", "list_remotes",
+                        "add_remote", "remove_remote", "rename_remote",
+                        "set_remote_url"} <= names
+                assert len(names) == 30
 
                 result = await session.call_tool("list_presets", {})
                 assert not _is_error(result)
