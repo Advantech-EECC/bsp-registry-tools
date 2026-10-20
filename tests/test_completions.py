@@ -71,16 +71,16 @@ class TestBuildManagerForCompletion:
     def test_passes_update_false_to_fetch_registry(self, tmp_path):
         reg = _make_registry_file(tmp_path, MINIMAL_REGISTRY_YAML)
         fetcher_mock = MagicMock()
-        fetcher_mock.fetch_registry.return_value = reg
+        fetcher_mock.fetch_multiple.return_value = [("r", reg)]
         with patch("bsp.completions.RegistryFetcher", return_value=fetcher_mock):
             # Force the "no local registry found, no --registry" path
             args = _parsed_args(registry=None, remote=["https://example.com/r.git"])
             _build_manager_for_completion(args)
-        fetcher_mock.fetch_registry.assert_called_once()
+        fetcher_mock.fetch_multiple.assert_called_once()
         # update=False must have been passed (positionally or as a keyword arg)
-        call_args = fetcher_mock.fetch_registry.call_args
+        call_args = fetcher_mock.fetch_multiple.call_args
         passed_as_kwarg = call_args.kwargs.get("update") is False
-        passed_positionally = len(call_args.args) >= 3 and call_args.args[2] is False
+        passed_positionally = len(call_args.args) >= 2 and call_args.args[1] is False
         assert passed_as_kwarg or passed_positionally
 
     def test_swallows_exception_returns_none(self, tmp_path):

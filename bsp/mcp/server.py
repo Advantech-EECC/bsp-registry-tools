@@ -256,16 +256,40 @@ class ServerContext:
             else:
                 from bsp.registry_fetcher import (
                     DEFAULT_BRANCH,
-                    DEFAULT_REMOTE_URL,
                     RegistryFetcher,
+                    RemoteRegistrySpec,
                 )
+                from bsp.remotes_manager import RemotesManager
+
+                if self._remote:
+                    spec = RemoteRegistrySpec(
+                        url=self._remote,
+                        branch=self._branch or DEFAULT_BRANCH,
+                    )
+                else:
+                    # Pick the first configured/default remote, much like git
+                    # picks 'origin'.
+                    stored = RemotesManager().ensure_default_remote(
+                        branch=self._branch or DEFAULT_BRANCH
+                    )
+                    if not stored:
+                        raise ValueError(
+                            "No configured remotes and no --registry/--remote "
+                            "given; add one with 'bsp remotes add'."
+                        )
+                    first = stored[0]
+                    spec = RemoteRegistrySpec(
+                        url=first.url,
+                        branch=self._branch or first.branch,
+                        name=first.name,
+                    )
+                # fetch_multiple clones each remote into its own subdirectory;
+                # the cache dir itself is never used as a git repository.
                 fetcher = RegistryFetcher()
                 with _capture() as buf:
                     try:
-                        self._registry_path = fetcher.fetch_registry(
-                            repo_url=self._remote or DEFAULT_REMOTE_URL,
-                            branch=self._branch or DEFAULT_BRANCH,
-                        )
+                        pairs = fetcher.fetch_multiple([spec])
+                        self._registry_path = pairs[0][1]
                     except SystemExit as exc:
                         raise ValueError(
                             "Failed to fetch the remote registry: "

@@ -62,32 +62,21 @@ def _build_manager_for_completion(parsed_args) -> Optional[BspManager]:
             fetcher = RegistryFetcher()
             if remote_arg:
                 remotes_raw = remote_arg if isinstance(remote_arg, list) else [remote_arg]
-                using_configured_remotes = False
             else:
                 stored = RemotesManager().ensure_default_remote(branch=branch_arg)
                 remotes_raw = [
                     f"{r.url}@{r.branch}@name={r.name}" for r in stored
                 ]
-                using_configured_remotes = True
 
-            if len(remotes_raw) == 1 and not using_configured_remotes:
-                spec = RemoteRegistrySpec.parse(remotes_raw[0], default_branch=branch_arg)
-                registry_path = str(
-                    fetcher.fetch_registry(
-                        repo_url=spec.url,
-                        branch=spec.branch,
-                        update=False,
-                    )
-                )
-                mgr = BspManager(registry_path)
-            else:
-                specs = [
-                    RemoteRegistrySpec.parse(r, default_branch=branch_arg)
-                    for r in remotes_raw
-                ]
-                registry_pairs = fetcher.fetch_multiple(specs, update=False)
-                config_paths = [(name, str(path)) for name, path in registry_pairs]
-                mgr = BspManager(config_paths=config_paths)
+            # Every remote is fetched into its own cache subdirectory; the
+            # cache dir itself is never used as a git repository.
+            specs = [
+                RemoteRegistrySpec.parse(r, default_branch=branch_arg)
+                for r in remotes_raw
+            ]
+            registry_pairs = fetcher.fetch_multiple(specs, update=False)
+            config_paths = [(name, str(path)) for name, path in registry_pairs]
+            mgr = BspManager(config_paths=config_paths)
 
         mgr.initialize()
         return mgr

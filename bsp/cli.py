@@ -2023,10 +2023,11 @@ def main() -> int:
             from .registry_fetcher import RemoteRegistrySpec
             fetcher = RegistryFetcher()
 
-            # If no --remote flags given on the CLI, fall back to configured remotes
+            # If no --remote flags given on the CLI, fall back to configured
+            # remotes — the first configured remote is the default, much like
+            # git picks 'origin'.
             if args.remote:
                 remotes_raw = args.remote
-                using_configured_remotes = False
             else:
                 stored = RemotesManager().ensure_default_remote(branch=args.branch)
                 # Encode stored remotes as URL@BRANCH@name=NAME strings so the
@@ -2034,34 +2035,24 @@ def main() -> int:
                 remotes_raw = [
                     f"{r.url}@{r.branch}@name={r.name}" for r in stored
                 ]
-                using_configured_remotes = True
                 logging.info(
                     "Using %d configured remote(s): %s",
                     len(stored),
                     [r.name for r in stored],
                 )
 
-            if len(remotes_raw) == 1 and not using_configured_remotes:
-                # Single explicit remote — backward-compat single-registry path
-                spec = RemoteRegistrySpec.parse(remotes_raw[0], default_branch=args.branch)
-                registry_path = str(fetcher.fetch_registry(
-                    repo_url=spec.url,
-                    branch=spec.branch,
-                    update=args.update,
-                ))
-                logging.info("Using remote registry cached at: %s", registry_path)
-                bsp_mgr = BspManager(registry_path, verbose=args.verbose)
-            else:
-                # Multiple remotes — multi-registry mode
-                specs = [RemoteRegistrySpec.parse(r, default_branch=args.branch) for r in remotes_raw]
-                registry_pairs = fetcher.fetch_multiple(specs, update=args.update)
-                logging.info(
-                    "Loaded %d remote registries: %s",
-                    len(registry_pairs),
-                    [name for name, _ in registry_pairs],
-                )
-                config_paths = [(name, str(path)) for name, path in registry_pairs]
-                bsp_mgr = BspManager(config_paths=config_paths, verbose=args.verbose)
+            # Every remote (explicit or configured) is fetched into its own
+            # subdirectory of the cache dir; the cache dir itself is never
+            # used as a git repository.
+            specs = [RemoteRegistrySpec.parse(r, default_branch=args.branch) for r in remotes_raw]
+            registry_pairs = fetcher.fetch_multiple(specs, update=args.update)
+            logging.info(
+                "Loaded %d remote registries: %s",
+                len(registry_pairs),
+                [name for name, _ in registry_pairs],
+            )
+            config_paths = [(name, str(path)) for name, path in registry_pairs]
+            bsp_mgr = BspManager(config_paths=config_paths, verbose=args.verbose)
 
         bsp_mgr.initialize()
 

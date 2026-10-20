@@ -102,7 +102,7 @@ the failing task name, then content patterns.
 | Flag | Env var | Default | Description |
 | --- | --- | --- | --- |
 | `--registry` | `BSP_MCP_REGISTRY` | fetch remote | Path to a local `bsp-registry.yaml` |
-| `--remote` | `BSP_MCP_REMOTE` | official registry | Remote registry git URL |
+| `--remote` | `BSP_MCP_REMOTE` | first configured remote | Remote registry git URL (defaults to the first remote from `bsp remotes`, like git's `origin`) |
 | `--branch` | `BSP_MCP_BRANCH` | `main` | Remote registry branch |
 | `--state-dir` | `BSP_MCP_STATE_DIR` | `~/.cache/bsp/mcp/jobs` | Job state directory |
 | `--max-jobs` | `BSP_MCP_MAX_JOBS` | `1` | Maximum concurrently running jobs |
