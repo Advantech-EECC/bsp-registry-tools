@@ -1160,8 +1160,9 @@ bsp flash imx8mp-adv-scarthgap \
 # Use dd instead of bmaptool
 bsp flash imx8mp-adv-scarthgap --target /dev/sdb --tool dd
 
-# Use uuu (mfgtools) for NXP USB flashing (no --target required)
-bsp flash imx8mp-adv-scarthgap --tool uuu --extra-args "-b emmc_all"
+# Use uuu (mfgtools) for NXP USB flashing (no --target required;
+# "-b emmc_all" is used by default unless --extra-args supplies a burn script)
+bsp flash imx8mp-adv-scarthgap --tool uuu
 
 # Flash immediately after a build
 bsp build imx8mp-adv-scarthgap --flash /dev/sdb

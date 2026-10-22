@@ -392,7 +392,14 @@ class ImageFlasher:
 
         For ``uuu`` the command is::
 
-            uuu [extra_args …] <image>
+            uuu [extra_args …] -b emmc_all <image>
+
+        The ``-b emmc_all`` burn script is added automatically unless the
+        extra args already contain a ``-b``/``-d`` option or a script path,
+        because invoking ``uuu <image>`` without a burn script makes uuu
+        treat the image file as a uuu script and crash.  The image path is
+        passed as an absolute path since uuu fails to resolve bare file
+        names without a directory component.
 
         Args:
             image_path: Path to the image file to flash.
@@ -415,7 +422,15 @@ class ImageFlasher:
             cmd = ["dd", f"if={image_path}", f"of={target_device}", "bs=4M"]
             cmd += extra
         elif tool == "uuu":
-            cmd = ["uuu"] + extra + [str(image_path)]
+            cmd = ["uuu"] + extra
+            if not any(arg in ("-b", "-d") for arg in extra):
+                # Without a burn script uuu interprets the image file as a
+                # uuu script and aborts; default to the eMMC burn flow.
+                cmd += ["-b", "emmc_all"]
+            # uuu cannot resolve bare file names without a directory
+            # component ("can't find ext name in path"), so always pass
+            # an absolute path.
+            cmd += [str(Path(image_path).resolve())]
         else:
             # Generic: just call the tool with the image and device as args.
             cmd = [tool] + extra + [str(image_path), target_device]

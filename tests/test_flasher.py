@@ -311,7 +311,23 @@ class TestImageFlasherBuildCommand:
         img = tmp_path / "image.wic"
         with patch("os.geteuid", return_value=0):
             cmd = flasher._build_command(img, "", None)
-        assert cmd == ["uuu", "-b", "emmc_all", str(img)]
+        assert cmd == ["uuu", "-b", "emmc_all", str(img.resolve())]
+
+    def test_uuu_command_defaults_to_emmc_all(self, tmp_path):
+        cfg = FlashConfig(tool="uuu")
+        flasher = ImageFlasher(cfg)
+        img = tmp_path / "image.wic"
+        with patch("os.geteuid", return_value=0):
+            cmd = flasher._build_command(img, "", None)
+        assert cmd == ["uuu", "-b", "emmc_all", str(img.resolve())]
+
+    def test_uuu_command_respects_custom_burn_script(self, tmp_path):
+        cfg = FlashConfig(tool="uuu", extra_args="-b sd_all")
+        flasher = ImageFlasher(cfg)
+        img = tmp_path / "image.wic"
+        with patch("os.geteuid", return_value=0):
+            cmd = flasher._build_command(img, "", None)
+        assert cmd == ["uuu", "-b", "sd_all", str(img.resolve())]
 
     def test_non_root_adds_sudo_prefix(self, tmp_path):
         cfg = FlashConfig(tool="bmaptool")
@@ -468,7 +484,7 @@ class TestImageFlasherFlash:
         assert result.success is True
         assert result.target_device == ""
         cmd_called = mock_run.call_args[0][0]
-        assert cmd_called == ["uuu", str(img)]
+        assert cmd_called == ["uuu", "-b", "emmc_all", str(img.resolve())]
 
     def test_explicit_image_path_used(self, tmp_path):
         img = tmp_path / "explicit.wic"

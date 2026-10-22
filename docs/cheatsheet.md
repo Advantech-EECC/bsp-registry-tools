@@ -271,7 +271,7 @@ bsp flash --device <device> --release <release> --target /dev/sdb
 
 bsp flash <bsp_name> --target /dev/sdb --tool bmaptool  # default
 bsp flash <bsp_name> --target /dev/sdb --tool dd
-bsp flash <bsp_name> --tool uuu --extra-args "-b emmc_all"  # NXP USB flashing
+bsp flash <bsp_name> --tool uuu  # NXP USB flashing (defaults to "-b emmc_all")
 
 bsp flash <bsp_name> --target /dev/sdb \
     --image-path build/tmp/deploy/images/core-image-minimal.wic.bz2
