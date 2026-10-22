@@ -690,6 +690,113 @@ class TestBspManagerGather:
 
         assert isinstance(result, GatherResult)
 
+    def test_gather_bsp_default_dest_is_image_deploy_dir(self, gather_registry_file, tmp_path):
+        """Without --dest-dir, artifacts go to <build_path>/build/tmp/deploy/images."""
+        from pathlib import Path
+        from bsp import BspManager
+        mgr = BspManager(config_path=str(gather_registry_file))
+        mgr.initialize()
+
+        with patch("bsp.bsp_manager.ArtifactGatherer") as MockGatherer:
+            mock_instance = MockGatherer.return_value
+            mock_instance.gather.return_value = GatherResult()
+            with patch("bsp.bsp_manager.create_backend") as mock_factory:
+                mock_factory.return_value = MagicMock()
+                mgr.gather_bsp("rpi5-scarthgap", dry_run=True)
+
+        call_kwargs = mock_instance.gather.call_args.kwargs
+        assert call_kwargs["dest_dir"] == str(
+            Path("build/rpi5/scarthgap") / "build" / "tmp" / "deploy" / "images"
+        )
+
+    def test_gather_bsp_explicit_dest_dir_unchanged(self, gather_registry_file, tmp_path):
+        """Explicit dest_dir is used exactly as given."""
+        from bsp import BspManager
+        mgr = BspManager(config_path=str(gather_registry_file))
+        mgr.initialize()
+
+        dest = str(tmp_path / "my-artifacts")
+        with patch("bsp.bsp_manager.ArtifactGatherer") as MockGatherer:
+            mock_instance = MockGatherer.return_value
+            mock_instance.gather.return_value = GatherResult()
+            with patch("bsp.bsp_manager.create_backend") as mock_factory:
+                mock_factory.return_value = MagicMock()
+                mgr.gather_bsp("rpi5-scarthgap", dest_dir=dest, dry_run=True)
+
+        call_kwargs = mock_instance.gather.call_args.kwargs
+        assert call_kwargs["dest_dir"] == dest
+
+    def test_gather_bsp_dry_run_reports_effective_dest(self, gather_registry_file, tmp_path, capsys):
+        """Dry-run summary reports the effective image deploy destination."""
+        from pathlib import Path
+        from bsp import BspManager
+        mgr = BspManager(config_path=str(gather_registry_file))
+        mgr.initialize()
+
+        expected_dest = str(
+            Path("build/rpi5/scarthgap") / "build" / "tmp" / "deploy" / "images"
+        )
+        with patch("bsp.bsp_manager.ArtifactGatherer") as MockGatherer:
+            mock_instance = MockGatherer.return_value
+            mock_instance.gather.return_value = GatherResult(
+                artifacts=[Path(expected_dest) / "image.wic"],
+                dry_run=True,
+            )
+            with patch("bsp.bsp_manager.create_backend") as mock_factory:
+                mock_factory.return_value = MagicMock()
+                mgr.gather_bsp("rpi5-scarthgap", dry_run=True)
+
+        out = capsys.readouterr().out
+        assert f"→ {expected_dest}" in out
+
+    def test_gather_bsp_default_cache_dest_based_on_build_root(self, gather_registry_file, tmp_path):
+        """Inferred cache restore defaults stay anchored at the build root."""
+        from pathlib import Path
+        from bsp import BspManager
+        mgr = BspManager(config_path=str(gather_registry_file))
+        mgr.initialize()
+        mgr.env_manager = MagicMock()
+        mgr.env_manager.get_value.return_value = None
+
+        with patch("bsp.bsp_manager.ArtifactGatherer") as MockGatherer:
+            mock_instance = MockGatherer.return_value
+            mock_instance.gather.return_value = GatherResult()
+            with patch("bsp.bsp_manager.create_backend") as mock_factory:
+                mock_factory.return_value = MagicMock()
+                mgr.gather_bsp("rpi5-scarthgap", dry_run=True, gather_cache=True)
+
+        call_kwargs = mock_instance.gather.call_args.kwargs
+        build_root = Path("build/rpi5/scarthgap")
+        assert call_kwargs["downloads_dest"] == str((build_root / "downloads").resolve())
+        assert call_kwargs["sstate_dest"] == str((build_root / "sstate-cache").resolve())
+        # Cache defaults must not be shifted into the images directory
+        assert "deploy" not in call_kwargs["downloads_dest"]
+        assert "deploy" not in call_kwargs["sstate_dest"]
+
+    def test_gather_bsp_explicit_dest_dir_drives_cache_base(self, gather_registry_file, tmp_path):
+        """With explicit dest_dir, inferred cache defaults stay based on it."""
+        from pathlib import Path
+        from bsp import BspManager
+        mgr = BspManager(config_path=str(gather_registry_file))
+        mgr.initialize()
+        mgr.env_manager = MagicMock()
+        mgr.env_manager.get_value.return_value = None
+
+        dest = str(tmp_path / "arts")
+        with patch("bsp.bsp_manager.ArtifactGatherer") as MockGatherer:
+            mock_instance = MockGatherer.return_value
+            mock_instance.gather.return_value = GatherResult()
+            with patch("bsp.bsp_manager.create_backend") as mock_factory:
+                mock_factory.return_value = MagicMock()
+                mgr.gather_bsp(
+                    "rpi5-scarthgap", dest_dir=dest, dry_run=True, gather_cache=True
+                )
+
+        call_kwargs = mock_instance.gather.call_args.kwargs
+        assert call_kwargs["dest_dir"] == dest
+        assert call_kwargs["downloads_dest"] == str(Path(dest) / "downloads")
+        assert call_kwargs["sstate_dest"] == str(Path(dest) / "sstate-cache")
+
     def test_gather_bsp_dry_run_no_container_required(self, gather_registry_file, tmp_path):
         """Dry run should not exit even when container is not configured."""
         from bsp import BspManager

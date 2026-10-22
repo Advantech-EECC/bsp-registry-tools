@@ -1375,7 +1375,8 @@ def main() -> int:
             metavar="PATH",
             help=(
                 "Local directory to write downloaded artifacts into. "
-                "Defaults to the build path configured in the registry."
+                "Defaults to <build_path>/build/tmp/deploy/images under the "
+                "build path configured in the registry."
             )
         )
         gather_parser.add_argument(

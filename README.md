@@ -1036,7 +1036,7 @@ bsp gather --device <d> --release <r> [--feature <f>] [OPTIONS]
 | `--provider PROVIDER` | Storage provider: `azure` (default) or `aws` |
 | `--container CONTAINER`, `--bucket CONTAINER` | Azure container or AWS S3 bucket name |
 | `--prefix PREFIX` | Remote path prefix template (supports `{device}`, `{release}`, `{distro}`, `{vendor}`, `{date}`) |
-| `--dest-dir PATH` | Local directory to write downloaded artifacts into (default: registry build path) |
+| `--dest-dir PATH` | Local directory to write downloaded artifacts into (default: `<build_path>/build/tmp/deploy/images` under the registry build path) |
 | `--date DATE` | Override the `{date}` placeholder in the prefix template (`YYYY-MM-DD`); defaults to today |
 | `--gather-cache` | Also download and restore Yocto cache archives (DL_DIR / SSTATE_DIR) if available |
 | `--cache-downloads-dir PATH` | Local path to restore the DL_DIR cache into (default: `DL_DIR` env var or `<topdir>/downloads`, where TOPDIR is inferred from `artifact_dirs`) |

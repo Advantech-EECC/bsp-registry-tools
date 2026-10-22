@@ -3182,7 +3182,9 @@ class BspManager:
             preset: Optional BSP preset whose ``deploy`` block is applied on
                     top of the global deploy config before CLI overrides.
             dest_dir: Local directory to write downloaded artifacts into.
-                      When ``None`` the build path from *resolved* is used.
+                      When ``None`` the Yocto image deploy directory
+                      ``<build_path>/build/tmp/deploy/images`` under the build
+                      path from *resolved* is used.
             deploy_overrides: CLI-level overrides for the deploy configuration.
             dry_run: When ``True`` log what would be downloaded without
                      actually downloading anything.
@@ -3237,13 +3239,24 @@ class BspManager:
             logging.error("Failed to initialize storage backend: %s", exc)
             sys.exit(1)
 
-        effective_dest = dest_dir if dest_dir is not None else resolved.build_path
+        if dest_dir is not None:
+            effective_dest = dest_dir
+            cache_base_dir = dest_dir
+        else:
+            # Default artifact destination is the Yocto image deploy directory
+            # so downstream commands (flash/image discovery) find the images.
+            effective_dest = str(
+                Path(resolved.build_path) / "build" / "tmp" / "deploy" / "images"
+            )
+            # Cache restore defaults stay anchored at the build root, not the
+            # image deploy directory.
+            cache_base_dir = resolved.build_path
 
         # Resolve cache destination directories (CLI overrides > env > Yocto defaults)
         effective_downloads_dest, effective_sstate_dest = self._resolve_cache_restore_paths(
             cache_downloads_dest=cache_downloads_dest,
             cache_sstate_dest=cache_sstate_dest,
-            base_dir=effective_dest,
+            base_dir=cache_base_dir,
             artifact_dirs=deploy_cfg.artifact_dirs,
             create_dirs=(gather_cache and not dry_run),
         )
@@ -3294,8 +3307,9 @@ class BspManager:
 
         Args:
             bsp_name: Name of the BSP preset.
-            dest_dir: Local destination directory.  Defaults to the preset's
-                      configured build path when ``None``.
+            dest_dir: Local destination directory.  Defaults to
+                      ``<build_path>/build/tmp/deploy/images`` under the
+                      preset's configured build path when ``None``.
             deploy_overrides: CLI-level overrides for the deploy configuration.
             dry_run: When ``True`` log what would be downloaded without
                      actually downloading anything.
@@ -3343,8 +3357,9 @@ class BspManager:
             device_slug: Device slug.
             release_slug: Release slug.
             feature_slugs: Optional list of feature slugs.
-            dest_dir: Local destination directory.  Defaults to the resolved
-                      build path when ``None``.
+            dest_dir: Local destination directory.  Defaults to
+                      ``<build_path>/build/tmp/deploy/images`` under the
+                      resolved build path when ``None``.
             deploy_overrides: CLI-level overrides for the deploy configuration.
             dry_run: When ``True`` log what would be downloaded without
                      actually downloading anything.

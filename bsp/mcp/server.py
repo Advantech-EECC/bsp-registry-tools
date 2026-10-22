@@ -613,7 +613,8 @@ def build_server(ctx: ServerContext):
 
     @tool(job_ann,
           "Download (gather) previously deployed artifacts from cloud "
-          "storage as a background job. dest_dir defaults to the registry's "
+          "storage as a background job. dest_dir defaults to "
+          "<build_path>/build/tmp/deploy/images under the registry's "
           "build path; use dry_run=true first to list what would be "
           "downloaded.")
     def start_gather(

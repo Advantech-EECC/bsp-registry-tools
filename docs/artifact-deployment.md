@@ -787,7 +787,7 @@ bsp gather --device <d> --release <r> [--feature <f>] [OPTIONS]
 | `--provider PROVIDER` | Override provider: `azure` or `aws` |
 | `--container CONTAINER` / `--bucket CONTAINER` | Override Azure container or AWS bucket name |
 | `--prefix PREFIX` | Override remote path prefix template |
-| `--dest-dir PATH` | Local directory to write artifacts into |
+| `--dest-dir PATH` | Local directory to write artifacts into (default: `<build_path>/build/tmp/deploy/images` under the registry build path) |
 | `--date DATE` | Date override for `{date}` placeholder (`YYYY-MM-DD`) |
 | `--gather-cache` | Also restore Yocto caches from cloud storage if available |
 | `--cache-downloads-dir PATH` | Local directory to restore the DL_DIR cache into |
