@@ -3,15 +3,15 @@
 # Mirrors the GitHub Actions workflows in .github/workflows/:
 #   - tests.yml      -> stage "Tests"     (pytest matrix, HTML + coverage reports)
 #   - cli-tests.yml  -> stage "CliTests"  (bsp CLI integration tests)
-#   - publish.yml    -> stages "Build", "PublishTestPyPI", "PublishPyPI"
+#   - publish.yml    -> stages "Build", "PublishTestPyPI" ("PublishPyPI" disabled)
 #
 # Publishing
 # ----------
 # Azure Pipelines has no "GitHub Release published" event, so publishing is
 # driven by version tags (v*) instead:
-#   - pushing a tag v*            -> TestPyPI always, PyPI unless the tag is a
-#                                    pre-release version (e.g. v2.3.0rc1)
-#   - manual run ("Run pipeline") -> pick publishTarget = testpypi | pypi
+#   - pushing a tag v*            -> TestPyPI
+#   - manual run ("Run pipeline") -> pick publishTarget = testpypi
+#   Publishing to the real PyPI is currently disabled (see the end of this file).
 #
 # One-time setup in the Azure DevOps project:
 #   1. Service connections (Project settings -> Service connections ->
@@ -37,7 +37,7 @@ parameters:
     displayName: Publish target (manual runs only)
     type: string
     default: none
-    values: [none, testpypi, pypi]
+    values: [none, testpypi]
 
 variables:
   PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip
@@ -303,43 +303,46 @@ stages:
                   displayName: Publish to TestPyPI
 
   # ---------------------------------------------------------------------------
-  # Publish to PyPI (publish.yml -> publish-to-pypi)
-  # ---------------------------------------------------------------------------
-  - stage: PublishPyPI
-    displayName: Publish to PyPI
-    dependsOn: Build
-    condition: >-
-      and(succeeded(),
-          or(and(eq(variables.isTag, true),
-                 ne(dependencies.Build.outputs['build.release.isPrerelease'], 'true')),
-             and(eq(variables.isManual, true), eq('${{ parameters.publishTarget }}', 'pypi'))))
-    jobs:
-      - deployment: publish_pypi
-        displayName: Publish to PyPI
-        pool:
-          vmImage: ubuntu-latest
-        environment: pypi
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - download: current
-                  artifact: python-package-distributions
+  # PyPI publishing is DISABLED. To re-enable it, uncomment the stage below
+  # and add 'pypi' back to the publishTarget parameter values.
+#  # ---------------------------------------------------------------------------
+#  # Publish to PyPI (publish.yml -> publish-to-pypi)
+#  # ---------------------------------------------------------------------------
+#  - stage: PublishPyPI
+#    displayName: Publish to PyPI
+#    dependsOn: Build
+#    condition: >-
+#      and(succeeded(),
+#          or(and(eq(variables.isTag, true),
+#                 ne(dependencies.Build.outputs['build.release.isPrerelease'], 'true')),
+#             and(eq(variables.isManual, true), eq('${{ parameters.publishTarget }}', 'pypi'))))
+#    jobs:
+#      - deployment: publish_pypi
+#        displayName: Publish to PyPI
+#        pool:
+#          vmImage: ubuntu-latest
+#        environment: pypi
+#        strategy:
+#          runOnce:
+#            deploy:
+#              steps:
+#                - download: current
+#                  artifact: python-package-distributions
 
-                - task: UsePythonVersion@0
-                  inputs:
-                    versionSpec: '3.12'
+#                - task: UsePythonVersion@0
+#                  inputs:
+#                    versionSpec: '3.12'
 
-                - script: python -m pip install --upgrade twine
-                  displayName: Install twine
+#                - script: python -m pip install --upgrade twine
+#                  displayName: Install twine
 
-                - task: TwineAuthenticate@1
-                  displayName: Authenticate with PyPI
-                  inputs:
-                    pythonUploadServiceConnection: pypi
+#                - task: TwineAuthenticate@1
+#                  displayName: Authenticate with PyPI
+#                  inputs:
+#                    pythonUploadServiceConnection: pypi
 
-                - script: >-
-                    python -m twine upload
-                    -r pypi --config-file $(PYPIRC_PATH)
-                    $(Pipeline.Workspace)/python-package-distributions/*
-                  displayName: Publish to PyPI
+#                - script: >-
+#                    python -m twine upload
+#                    -r pypi --config-file $(PYPIRC_PATH)
+#                    $(Pipeline.Workspace)/python-package-distributions/*
+#                  displayName: Publish to PyPI
