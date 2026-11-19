@@ -18,8 +18,10 @@
 #      "Python package upload") named exactly:
 #        - testpypi  (URL https://test.pypi.org/legacy/, EndpointName "testpypi")
 #        - pypi      (URL https://upload.pypi.org/legacy/, EndpointName "pypi")
+#                    -- only needed if PyPI publishing is re-enabled
 #      authenticated with a PyPI / TestPyPI API token.
-#   2. Environments (Pipelines -> Environments) named "testpypi" and "pypi".
+#   2. Environments (Pipelines -> Environments) named "testpypi" (and "pypi"
+#      if PyPI publishing is re-enabled).
 #      Add approvals/checks there to gate releases, like GitHub environments.
 
 trigger:
