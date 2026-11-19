@@ -1,0 +1,345 @@
+# Azure Pipelines configuration for bsp-registry-tools.
+#
+# Mirrors the GitHub Actions workflows in .github/workflows/:
+#   - tests.yml      -> stage "Tests"     (pytest matrix, HTML + coverage reports)
+#   - cli-tests.yml  -> stage "CliTests"  (bsp CLI integration tests)
+#   - publish.yml    -> stages "Build", "PublishTestPyPI", "PublishPyPI"
+#
+# Publishing
+# ----------
+# Azure Pipelines has no "GitHub Release published" event, so publishing is
+# driven by version tags (v*) instead:
+#   - pushing a tag v*            -> TestPyPI always, PyPI unless the tag is a
+#                                    pre-release version (e.g. v2.3.0rc1)
+#   - manual run ("Run pipeline") -> pick publishTarget = testpypi | pypi
+#
+# One-time setup in the Azure DevOps project:
+#   1. Service connections (Project settings -> Service connections ->
+#      "Python package upload") named exactly:
+#        - testpypi  (URL https://test.pypi.org/legacy/, EndpointName "testpypi")
+#        - pypi      (URL https://upload.pypi.org/legacy/, EndpointName "pypi")
+#      authenticated with a PyPI / TestPyPI API token.
+#   2. Environments (Pipelines -> Environments) named "testpypi" and "pypi".
+#      Add approvals/checks there to gate releases, like GitHub environments.
+
+trigger:
+  branches:
+    include: [main, master, development]
+  tags:
+    include: ['v*']
+
+pr:
+  branches:
+    include: [main, master, development]
+
+parameters:
+  - name: publishTarget
+    displayName: Publish target (manual runs only)
+    type: string
+    default: none
+    values: [none, testpypi, pypi]
+
+variables:
+  PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip
+  isTag: $[startsWith(variables['Build.SourceBranch'], 'refs/tags/v')]
+  isManual: $[eq(variables['Build.Reason'], 'Manual')]
+
+stages:
+  # ---------------------------------------------------------------------------
+  # Unit tests (tests.yml)
+  # ---------------------------------------------------------------------------
+  - stage: Tests
+    displayName: Tests
+    jobs:
+      - job: test
+        displayName: Run tests (Python $(python.version))
+        pool:
+          vmImage: ubuntu-24.04
+        strategy:
+          matrix:
+            py39:
+              python.version: '3.9'
+            py310:
+              python.version: '3.10'
+            py311:
+              python.version: '3.11'
+            py312:
+              python.version: '3.12'
+            py313:
+              python.version: '3.13'
+        steps:
+          - checkout: self
+
+          - task: UsePythonVersion@0
+            displayName: Set up Python $(python.version)
+            inputs:
+              versionSpec: $(python.version)
+
+          - task: Cache@2
+            displayName: Cache pip
+            inputs:
+              key: 'pip | "$(Agent.OS)" | "$(python.version)" | pyproject.toml'
+              restoreKeys: |
+                pip | "$(Agent.OS)" | "$(python.version)"
+              path: $(PIP_CACHE_DIR)
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -e ".[dev]" pytest pytest-cov pytest-html
+            displayName: Install dependencies
+
+          - script: >-
+              python -m pytest tests/ -v --tb=short
+              --html=test-report.html --self-contained-html
+              --junitxml=test-results.xml
+            displayName: Run tests
+
+          - task: PublishTestResults@2
+            displayName: Publish test results
+            condition: succeededOrFailed()
+            inputs:
+              testResultsFormat: JUnit
+              testResultsFiles: test-results.xml
+              testRunTitle: Python $(python.version)
+
+          - task: PublishPipelineArtifact@1
+            displayName: Upload HTML test report
+            condition: succeededOrFailed()
+            inputs:
+              targetPath: test-report.html
+              artifact: test-report-py$(python.version)
+
+          - script: >-
+              python -m pytest tests/ --cov=bsp
+              --cov-report=xml --cov-report=term-missing
+            displayName: Run tests with coverage
+            condition: and(succeeded(), eq(variables['python.version'], '3.13'))
+
+          - task: PublishCodeCoverageResults@2
+            displayName: Publish coverage results
+            condition: and(succeeded(), eq(variables['python.version'], '3.13'))
+            inputs:
+              summaryFileLocation: coverage.xml
+
+          - task: PublishPipelineArtifact@1
+            displayName: Upload coverage report
+            condition: and(succeeded(), eq(variables['python.version'], '3.13'))
+            inputs:
+              targetPath: coverage.xml
+              artifact: coverage-report
+
+  # ---------------------------------------------------------------------------
+  # CLI integration tests (cli-tests.yml)
+  # ---------------------------------------------------------------------------
+  - stage: CliTests
+    displayName: CLI Integration Tests
+    dependsOn: []          # run in parallel with Tests
+    jobs:
+      - job: cli_test
+        displayName: BSP CLI integration tests
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+
+          - task: UsePythonVersion@0
+            displayName: Set up Python
+            inputs:
+              versionSpec: '3.12'
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install PyYAML dacite colorama
+              pip install -e .
+            displayName: Install package
+
+          - script: |
+              git config --global user.name "bot"
+              git config --global user.email "bot@users.noreply.github.com"
+            displayName: Setup Git Config
+
+          - script: |
+              mkdir -p ~/data/cache/downloads
+              mkdir -p ~/data/cache/sstate
+            displayName: Create cache directory
+
+          - script: bsp --help
+            displayName: bsp --help
+
+          - script: |
+              set -eo pipefail
+              bsp --registry bsp-registry.yaml list 2>&1 | tee list-output.txt
+              grep -q "poky-qemuarm64-scarthgap" list-output.txt
+              grep -q "poky-qemux86-64-scarthgap" list-output.txt
+              grep -q "poky-qemuarm-scarthgap" list-output.txt
+              grep -q "isar-qemuamd64-debian-trixie" list-output.txt
+              grep -q "isar-qemuamd64-ubuntu-noble" list-output.txt
+            displayName: bsp list (example registry)
+            workingDirectory: examples
+
+          - script: |
+              set -eo pipefail
+              bsp --registry bsp-registry.yaml containers 2>&1 | tee containers-output.txt
+              grep -q "debian-bookworm" containers-output.txt
+              grep -q "isar-debian-trixie" containers-output.txt
+            displayName: bsp containers (example registry)
+            workingDirectory: examples
+
+          - script: |
+              set -eo pipefail
+              bsp --verbose --registry bsp-registry.yaml export poky-qemux86-64-scarthgap 2>&1 | tee export-output.txt
+              grep -q "poky-qemux86-64-scarthgap" export-output.txt
+            displayName: bsp export (example registry)
+            workingDirectory: examples
+
+          - script: |
+              set -eo pipefail
+              bsp --verbose --registry bsp-registry.yaml build --checkout poky-qemux86-64-scarthgap 2>&1 | tee checkout-output.txt
+              grep -q "poky-qemux86-64-scarthgap" checkout-output.txt
+            displayName: bsp build --checkout (example registry)
+            workingDirectory: examples
+
+          - script: bsp --no-color --registry bsp-registry.yaml list
+            displayName: bsp --no-color list (example registry)
+            workingDirectory: examples
+
+          - script: |
+              bsp --registry /nonexistent/registry.yml list && exit 1 || true
+            displayName: bsp missing registry exits non-zero
+
+  # ---------------------------------------------------------------------------
+  # Build distribution (publish.yml -> build)
+  # ---------------------------------------------------------------------------
+  - stage: Build
+    displayName: Build distribution
+    dependsOn: [Tests, CliTests]
+    condition: >-
+      and(succeeded(),
+          or(eq(variables.isTag, true),
+             and(eq(variables.isManual, true), ne('${{ parameters.publishTarget }}', 'none'))))
+    jobs:
+      - job: build
+        displayName: Build distribution
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+            fetchDepth: 1
+
+          - task: UsePythonVersion@0
+            displayName: Set up Python
+            inputs:
+              versionSpec: '3.12'
+
+          - script: python -m pip install --upgrade pip build twine packaging
+            displayName: Install build tools
+
+          - script: python -m build
+            displayName: Build package (sdist + wheel)
+
+          - script: python -m twine check --strict dist/*
+            displayName: Verify package metadata
+
+          # Equivalent of GitHub's "release.prerelease" flag: derived from the tag.
+          - script: |
+              python - <<'EOF'
+              import os
+              from packaging.version import Version
+              ref = os.environ["BUILD_SOURCEBRANCH"]
+              pre = False
+              if ref.startswith("refs/tags/v"):
+                  pre = Version(ref[len("refs/tags/v"):]).is_prerelease
+              print(f"Pre-release: {pre}")
+              print(f"##vso[task.setvariable variable=isPrerelease;isOutput=true]{str(pre).lower()}")
+              EOF
+            name: release
+            displayName: Detect pre-release tag
+
+          - task: PublishPipelineArtifact@1
+            displayName: Store distribution packages
+            inputs:
+              targetPath: dist
+              artifact: python-package-distributions
+
+  # ---------------------------------------------------------------------------
+  # Publish to TestPyPI (publish.yml -> publish-to-testpypi)
+  # ---------------------------------------------------------------------------
+  - stage: PublishTestPyPI
+    displayName: Publish to TestPyPI
+    dependsOn: Build
+    condition: >-
+      and(succeeded(),
+          or(eq(variables.isTag, true),
+             and(eq(variables.isManual, true), eq('${{ parameters.publishTarget }}', 'testpypi'))))
+    jobs:
+      - deployment: publish_testpypi
+        displayName: Publish to TestPyPI
+        pool:
+          vmImage: ubuntu-latest
+        environment: testpypi
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: python-package-distributions
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: '3.12'
+
+                - script: python -m pip install --upgrade twine
+                  displayName: Install twine
+
+                - task: TwineAuthenticate@1
+                  displayName: Authenticate with TestPyPI
+                  inputs:
+                    pythonUploadServiceConnection: testpypi
+
+                - script: >-
+                    python -m twine upload --verbose
+                    -r testpypi --config-file $(PYPIRC_PATH)
+                    $(Pipeline.Workspace)/python-package-distributions/*
+                  displayName: Publish to TestPyPI
+
+  # ---------------------------------------------------------------------------
+  # Publish to PyPI (publish.yml -> publish-to-pypi)
+  # ---------------------------------------------------------------------------
+  - stage: PublishPyPI
+    displayName: Publish to PyPI
+    dependsOn: Build
+    condition: >-
+      and(succeeded(),
+          or(and(eq(variables.isTag, true),
+                 ne(dependencies.Build.outputs['build.release.isPrerelease'], 'true')),
+             and(eq(variables.isManual, true), eq('${{ parameters.publishTarget }}', 'pypi'))))
+    jobs:
+      - deployment: publish_pypi
+        displayName: Publish to PyPI
+        pool:
+          vmImage: ubuntu-latest
+        environment: pypi
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: python-package-distributions
+
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: '3.12'
+
+                - script: python -m pip install --upgrade twine
+                  displayName: Install twine
+
+                - task: TwineAuthenticate@1
+                  displayName: Authenticate with PyPI
+                  inputs:
+                    pythonUploadServiceConnection: pypi
+
+                - script: >-
+                    python -m twine upload
+                    -r pypi --config-file $(PYPIRC_PATH)
+                    $(Pipeline.Workspace)/python-package-distributions/*
+                  displayName: Publish to PyPI
