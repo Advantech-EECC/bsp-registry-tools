@@ -460,6 +460,14 @@ class KasManager:
 
             # Process includes first (depth-first for proper dependency resolution)
             for include in includes:
+                # KAS also allows repo-relative includes written as a dict
+                # ({repo: <name>, file: <path>}). The repo only exists after
+                # checkout, so kas resolves these itself; skip them here.
+                if not isinstance(include, str):
+                    logging.debug(
+                        f"Skipping non-local include {include!r} in {file_path}"
+                    )
+                    continue
                 include_path = self._resolve_include_path(include, file_path)
                 process_file(include_path)
 

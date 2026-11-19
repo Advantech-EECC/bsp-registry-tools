@@ -176,6 +176,29 @@ class TestKasManager:
         )
         assert manager.validate_kas_files(check_includes=True) is True
 
+    def test_validate_kas_files_skips_repo_dict_includes(self, tmp_dir):
+        """Repo-based (dict) includes are left for kas and don't break validation."""
+        base_path = tmp_dir / "base.yaml"
+        include_path = tmp_dir / "include.yaml"
+        base_path.write_text(
+            "header:\n"
+            "  version: 14\n"
+            "  includes:\n"
+            "    - include.yaml\n"
+            "    - repo: meta-qcom-releases\n"
+            "      file: lock.yml\n"
+            "machine: qemuarm64\n"
+        )
+        include_path.write_text("header:\n  version: 14\ndistro: poky\n")
+        manager = KasManager(
+            kas_files=[str(base_path)],
+            build_dir=str(tmp_dir / "build")
+        )
+        assert manager.validate_kas_files(check_includes=True) is True
+        files = manager._get_all_included_files([str(base_path)])
+        assert len(files) == 2
+        assert files[-1] == str(base_path)
+
     def test_parse_yaml_file_with_cache(self, kas_config_file):
         manager = KasManager(
             kas_files=[str(kas_config_file)],
