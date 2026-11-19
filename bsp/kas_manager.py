@@ -464,9 +464,19 @@ class KasManager:
                 # ({repo: <name>, file: <path>}). The repo only exists after
                 # checkout, so kas resolves these itself; skip them here.
                 if not isinstance(include, str):
-                    logging.debug(
-                        f"Skipping non-local include {include!r} in {file_path}"
-                    )
+                    if isinstance(include, dict):
+                        logging.warning(
+                            f"Include in {file_path} references external "
+                            f"repository '{include.get('repo', '?')}' "
+                            f"(file: {include.get('file', '?')}); it will be "
+                            f"resolved by kas after checkout and is not "
+                            f"validated here"
+                        )
+                    else:
+                        logging.warning(
+                            f"Skipping unsupported include entry {include!r} "
+                            f"in {file_path}"
+                        )
                     continue
                 include_path = self._resolve_include_path(include, file_path)
                 process_file(include_path)

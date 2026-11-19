@@ -176,7 +176,7 @@ class TestKasManager:
         )
         assert manager.validate_kas_files(check_includes=True) is True
 
-    def test_validate_kas_files_skips_repo_dict_includes(self, tmp_dir):
+    def test_validate_kas_files_skips_repo_dict_includes(self, tmp_dir, caplog):
         """Repo-based (dict) includes are left for kas and don't break validation."""
         base_path = tmp_dir / "base.yaml"
         include_path = tmp_dir / "include.yaml"
@@ -198,6 +198,12 @@ class TestKasManager:
         files = manager._get_all_included_files([str(base_path)])
         assert len(files) == 2
         assert files[-1] == str(base_path)
+        warnings = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert any(
+            "external repository 'meta-qcom-releases'" in r.getMessage()
+            and "lock.yml" in r.getMessage()
+            for r in warnings
+        )
 
     def test_parse_yaml_file_with_cache(self, kas_config_file):
         manager = KasManager(
