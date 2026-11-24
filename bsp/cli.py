@@ -2389,7 +2389,9 @@ def main() -> int:
                 [name for name, _ in registry_pairs],
             )
             config_paths = [(name, str(path)) for name, path in registry_pairs]
-            bsp_mgr = BspManager(config_paths=config_paths, verbose=args.verbose)
+            bsp_mgr = BspManager(
+                config_paths=config_paths, verbose=args.verbose, overlay=overlay_entry
+            )
 
         bsp_mgr.initialize()
 
