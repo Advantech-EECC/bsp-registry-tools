@@ -1042,13 +1042,12 @@ class V2Resolver:
                     preset_build.environment,
                     f"preset '{preset_name}' build.environment",
                 )
-                # Re-apply env variables: global root vars first, then this env's vars.
-                global_env_vars = (
-                    list(self.model.environment.variables)
-                    if self.model.environment and self.model.environment.variables
-                    else []
-                )
-                resolved.env = global_env_vars + list(preset_named_env.variables)
+                # Re-apply env variables the same way resolve() does: this
+                # env's vars first (base), then feature vars (overrides).
+                # Root-level vars are merged in later by the caller.
+                resolved.env = list(preset_named_env.variables)
+                for feature in resolved.features:
+                    resolved.env.extend(feature.env)
                 # Rebuild copy list with the preset-selected named env's copy.
                 global_copy = (
                     list(self.model.environment.copy)
