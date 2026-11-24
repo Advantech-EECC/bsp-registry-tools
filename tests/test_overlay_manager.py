@@ -1057,3 +1057,174 @@ class TestScaffoldCli:
             m = OverlayManager(config_path=overlays_config)
             with pytest.raises(SystemExit):
                 m.scaffold("../evil")
+
+
+# ---------------------------------------------------------------------------
+# Environment variable overrides via registry overlays
+# ---------------------------------------------------------------------------
+
+ENV_BASE_REGISTRY_YAML = """
+specification:
+  version: "2.1"
+environment:
+  variables:
+    - {name: GLOBAL_ONLY, value: g}
+    - {name: DL_DIR, value: /base/global-dl}
+    - {name: SSTATE_DIR, value: /base/global-sstate}
+environments:
+  default:
+    container: c1
+    variables:
+      - {name: DEFAULT_VAR, value: base-default}
+  special:
+    container: c1
+    variables:
+      - {name: SSTATE_DIR, value: /base/special-sstate}
+containers:
+  c1: {image: "x:1", file: null, args: []}
+registry:
+  devices:
+    - {slug: dev, description: d, vendor: v, soc_vendor: s, includes: [dev.yaml]}
+  releases:
+    - {slug: rel, description: r, yocto_version: "5.0", includes: [rel.yaml]}
+  features:
+    - slug: feat
+      description: f
+      env:
+        - {name: FEATURE_VAR, value: base-feature}
+  bsp:
+    - {name: p-default, description: x, device: dev, release: rel, features: [feat], build: {path: build/a}}
+    - {name: p-special, description: x, device: dev, release: rel, features: [feat], build: {environment: special, path: build/b}}
+"""
+
+ENV_OVERLAY_YAML = """
+environment:
+  variables:
+    - {name: DL_DIR, value: /overlay/global-dl}
+    - {name: OVERLAY_NEW, value: o}
+environments:
+  default:
+    variables:
+      - {name: DEFAULT_VAR, value: overlay-default}
+  special:
+    variables:
+      - {name: SSTATE_DIR, value: /overlay/special-sstate}
+registry:
+  features:
+    - slug: feat
+      env:
+        - {name: FEATURE_VAR, value: overlay-feature}
+"""
+
+
+class TestRegistryOverlayEnvironmentOverrides:
+    """A registry overlay can override env variables at every level."""
+
+    @pytest.fixture
+    def env_registry(self, tmp_path) -> Path:
+        path = tmp_path / "bsp-registry.yaml"
+        path.write_text(ENV_BASE_REGISTRY_YAML)
+        return path
+
+    @pytest.fixture
+    def env_overlay(self, tmp_path) -> OverlayEntry:
+        overlay_dir = tmp_path / "ov" / "env"
+        overlay_dir.mkdir(parents=True)
+        reg = overlay_dir / "registry.yaml"
+        reg.write_text(ENV_OVERLAY_YAML)
+        return OverlayEntry(name="env", registry=str(reg))
+
+    @staticmethod
+    def _effective_env(manager: BspManager, preset: str) -> dict:
+        """Effective build env, merged the same way as for a real build."""
+        resolved, _ = manager.resolver.resolve_preset(preset)
+        kas_mgr = manager._get_kas_manager_for_resolved(
+            resolved, use_container=False,
+            build_path_override=str(Path(manager.config_path).parent / "build"),
+        )
+        manager._cleanup_temp_kas_file()
+        return kas_mgr.env_manager.get_environment_dict()
+
+    def _manager(self, registry: Path, overlay=None) -> BspManager:
+        manager = BspManager(config_path=str(registry), overlay=overlay)
+        with patch("bsp.path_resolver.resolver.ensure_directory"):
+            manager.initialize()
+        return manager
+
+    def test_without_overlay_base_values_apply(self, env_registry):
+        manager = self._manager(env_registry)
+        with patch("bsp.path_resolver.resolver.ensure_directory"):
+            env = self._effective_env(manager, "p-default")
+        assert env["DL_DIR"] == "/base/global-dl"
+        assert env["DEFAULT_VAR"] == "base-default"
+        assert env["FEATURE_VAR"] == "base-feature"
+        assert "OVERLAY_NEW" not in env
+
+    def test_overlay_overrides_global_named_and_feature_env(self, env_registry, env_overlay):
+        manager = self._manager(env_registry, env_overlay)
+        with patch("bsp.path_resolver.resolver.ensure_directory"):
+            env = self._effective_env(manager, "p-default")
+        assert env["DL_DIR"] == "/overlay/global-dl"          # global override
+        assert env["OVERLAY_NEW"] == "o"                      # new global var
+        assert env["DEFAULT_VAR"] == "overlay-default"        # named-env override
+        assert env["FEATURE_VAR"] == "overlay-feature"        # feature override
+        assert env["GLOBAL_ONLY"] == "g"                      # untouched base var kept
+        assert env["SSTATE_DIR"] == "/base/global-sstate"
+
+    def test_overlay_global_override_reaches_global_env_manager(self, env_registry, env_overlay):
+        manager = self._manager(env_registry, env_overlay)
+        assert manager.env_manager.get_value("DL_DIR") == "/overlay/global-dl"
+
+    def test_overlay_env_applies_with_preset_build_environment(self, env_registry, env_overlay):
+        manager = self._manager(env_registry, env_overlay)
+        with patch("bsp.path_resolver.resolver.ensure_directory"):
+            env = self._effective_env(manager, "p-special")
+        assert env["SSTATE_DIR"] == "/overlay/special-sstate"
+        assert env["DL_DIR"] == "/overlay/global-dl"
+        assert env["OVERLAY_NEW"] == "o"
+        # Feature env must survive build.environment re-selecting the named env.
+        assert env["FEATURE_VAR"] == "overlay-feature"
+        # The default env is not active for this preset.
+        assert "DEFAULT_VAR" not in env
+
+
+from bsp.remotes_manager import RemoteEntry  # noqa: E402
+
+
+class TestOverlayRemoteRegistryMode:
+    """--overlay must also apply when the registry is fetched from a remote."""
+
+    def test_overlay_passed_to_manager_in_remote_mode(self, overlays_config, tmp_path, monkeypatch):
+        # Run from an empty directory so no local registry is picked up.
+        workdir = tmp_path / "cwd"
+        workdir.mkdir()
+        monkeypatch.chdir(workdir)
+        reg = tmp_path / "bsp-registry.yaml"
+        reg.write_text(ENV_BASE_REGISTRY_YAML)
+        overlay_reg = tmp_path / "overlay.yaml"
+        overlay_reg.write_text(ENV_OVERLAY_YAML)
+        OverlayManager(config_path=overlays_config).save(
+            [OverlayEntry(name="env", registry=str(overlay_reg))]
+        )
+
+        captured = {}
+        real_init = BspManager.__init__
+
+        def spy_init(self, *args, **kwargs):
+            real_init(self, *args, **kwargs)
+            captured["manager"] = self
+
+        with patch("sys.argv", ["bsp", "--overlay", "env", "list"]), \
+             patch(
+                 "bsp.registry_fetcher.RegistryFetcher.fetch_multiple",
+                 return_value=[("remote", reg)],
+             ), \
+             patch("bsp.remotes_manager.RemotesManager.ensure_default_remote",
+                   return_value=[RemoteEntry(name="remote", url="https://example.invalid/r.git")]), \
+             patch.object(BspManager, "__init__", spy_init):
+            assert bsp.main() == 0
+
+        manager = captured["manager"]
+        assert manager.overlay is not None
+        assert manager.overlay.name == "env"
+        assert manager.env_manager.get_value("DL_DIR") == "/overlay/global-dl"
